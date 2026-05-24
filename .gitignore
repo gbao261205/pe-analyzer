@@ -1,0 +1,34 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyc
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE and Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+reports/
+*.json
+*.csv
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Thư mục Docs (theo yêu cầu người dùng)
+/docs/

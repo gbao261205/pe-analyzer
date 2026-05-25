@@ -15,6 +15,7 @@ from rich.progress import (
 from ui.renderer import (
     console,
     render_hashes,
+    render_signature,
     render_yara,
     render_risk_score,
     render_sections,
@@ -27,6 +28,7 @@ from core.imports_exports import analyze_imports_exports
 from core.strings_analyzer import analyze_strings
 from core.hashes import calculate_hashes
 from core.yara_scanner import scan_with_yara
+from core.signature import check_signature
 from core.scoring import calculate_risk_score
 from utils.exporter import export_to_json
 from rich.panel import Panel
@@ -242,15 +244,16 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
             try:
                 pe = pefile.PE(file_path)
 
-                # --- Chạy 5 module Core ---
+                # --- Chạy 6 module Core ---
                 yara_data = scan_with_yara(file_path)
                 hash_data = calculate_hashes(file_path, pe)
                 section_data = analyze_sections(pe)
                 import_data = analyze_imports_exports(pe)
                 strings_data = analyze_strings(pe)
+                signature_data = check_signature(pe)
 
-                # --- 6. Tính điểm rủi ro ---
-                scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data)
+                # --- 7. Tính điểm rủi ro ---
+                scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data, signature_data)
                 risk_score = scoring_data.get("risk_score", 0)
                 risk_level = scoring_data.get("risk_level", "SAFE")
                 is_suspicious = risk_score >= 16
@@ -287,6 +290,7 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                     "suspicious_api_count": suspicious_api_count,
                     "section_flags": section_flags,
                     "iocs_count": iocs_count,
+                    "is_signed": signature_data.get("is_signed", False),
                 })
 
             except (pefile.PEFormatError, Exception):
@@ -301,6 +305,7 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                     "suspicious_api_count": 0,
                     "section_flags": [],
                     "iocs_count": 0,
+                    "is_signed": False,
                 })
 
             finally:
@@ -336,7 +341,8 @@ def run_single_scan() -> None:
         section_data = analyze_sections(pe)
         import_data = analyze_imports_exports(pe)
         strings_data = analyze_strings(pe)
-        scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data)
+        signature_data = check_signature(pe)
+        scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data, signature_data)
         console.print("  [bold green]✔ Phân tích hoàn tất![/]")
         console.input("\n  [dim][ Nhấn Enter để vào Menu phân tích... ][/]")
 
@@ -359,6 +365,7 @@ def run_single_scan() -> None:
                 render_risk_score(scoring_data)
                 render_yara(yara_data)
                 render_hashes(hash_data)
+                render_signature(signature_data)
                 render_sections(section_data)
                 pause()
             elif choice == "2":
@@ -373,7 +380,7 @@ def run_single_scan() -> None:
                 clear_screen()
                 console.print("\n")
                 
-                report_path = export_to_json(file_path, hash_data, yara_data, section_data, import_data, strings_data, scoring_data)
+                report_path = export_to_json(file_path, hash_data, yara_data, signature_data, section_data, import_data, strings_data, scoring_data)
                 
                 if report_path:
                     console.print(Panel(

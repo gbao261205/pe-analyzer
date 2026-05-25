@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-def export_to_json(file_path: str, hash_data: Dict[str, Any], yara_data: Dict[str, Any], section_data: Dict[str, Any], import_data: Dict[str, Any], strings_data: Dict[str, Any], scoring_data: Dict[str, Any]) -> Optional[str]:
+def export_to_json(file_path: str, hash_data: Dict[str, Any], yara_data: Dict[str, Any], signature_data: Dict[str, Any], section_data: Dict[str, Any], import_data: Dict[str, Any], strings_data: Dict[str, Any], scoring_data: Dict[str, Any]) -> Optional[str]:
     """
     Xuất báo cáo phân tích PE ra file JSON.
     
@@ -11,6 +11,7 @@ def export_to_json(file_path: str, hash_data: Dict[str, Any], yara_data: Dict[st
         file_path (str): Đường dẫn tới file PE gốc.
         hash_data (Dict[str, Any]): Dữ liệu mã băm (Hashes).
         yara_data (Dict[str, Any]): Dữ liệu kết quả quét YARA.
+        signature_data (Dict[str, Any]): Dữ liệu chữ ký số Authenticode.
         section_data (Dict[str, Any]): Dữ liệu phân tích Sections.
         import_data (Dict[str, Any]): Dữ liệu phân tích Imports/Exports.
         strings_data (Dict[str, Any]): Dữ liệu phân tích Strings/IoCs.
@@ -48,6 +49,7 @@ def export_to_json(file_path: str, hash_data: Dict[str, Any], yara_data: Dict[st
             "risk_assessment": scoring_data,
             "analysis_results": {
                 "hashes": hash_data,
+                "signature": signature_data,
                 "yara": yara_data,
                 "sections": section_data,
                 "imports_exports": import_data,

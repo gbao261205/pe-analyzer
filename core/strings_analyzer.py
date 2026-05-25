@@ -66,6 +66,33 @@ COMPILED_PATTERNS: Dict[str, re.Pattern] = {
     ),
 }
 
+# --- Whitelist: Các mẫu IoC hợp pháp sẽ bị lọc bỏ để giảm False Positives ---
+WHITELIST_PATTERNS: List[re.Pattern] = [
+    # Local / Bogon IPs
+    re.compile(r'^0\.0\.0\.0$'),
+    re.compile(r'^127\.0\.0\.1$'),
+    re.compile(r'^255\.255\.255\.255$'),
+    re.compile(r'^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$'),
+    re.compile(r'^192\.168\.\d{1,3}\.\d{1,3}$'),
+    re.compile(r'^172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$'),
+
+    # Microsoft / Windows Domains & URLs
+    re.compile(r'.*microsoft\.com', re.IGNORECASE),
+    re.compile(r'.*windows\.com', re.IGNORECASE),
+    re.compile(r'.*windowsupdate\.com', re.IGNORECASE),
+    re.compile(r'schemas\.openxmlformats\.org', re.IGNORECASE),
+    re.compile(r'http://schemas\.microsoft\.com/', re.IGNORECASE),
+
+    # Hãng bảo mật / Chứng chỉ số
+    re.compile(r'.*verisign\.com', re.IGNORECASE),
+    re.compile(r'.*digicert\.com', re.IGNORECASE),
+    re.compile(r'.*symantec\.com', re.IGNORECASE),
+
+    # .NET Namespaces và Versions
+    re.compile(r'^System\.[A-Za-z0-9.]+$'),
+    re.compile(r'^(?:[0-9]\.){3}[0-9]$'),
+]
+
 # Regex trích xuất chuỗi thô từ mảng byte
 _ASCII_PATTERN: re.Pattern = re.compile(rb'[ -~]{4,}')
 _UNICODE_PATTERN: re.Pattern = re.compile(rb'(?:[\x20-\x7e]\x00){4,}')
@@ -129,6 +156,7 @@ def analyze_strings(pe: pefile.PE) -> Dict[str, Any]:
         "status": "success",
         "error_message": None,
         "total_strings_count": 0,
+        "whitelisted_count": 0,
         "iocs": {
             "ipv4": [],
             "ipv6": [],
@@ -164,16 +192,33 @@ def analyze_strings(pe: pefile.PE) -> Dict[str, Any]:
         }
 
         # Duyệt từng chuỗi và so khớp với các pattern
+        whitelisted_count = 0
+
         for string in all_strings:
             for category, pattern in COMPILED_PATTERNS.items():
                 try:
                     matches = pattern.findall(string)
                     for match in matches:
                         cleaned = match.strip()
-                        if cleaned:
-                            ioc_sets[category].add(cleaned)
+                        if not cleaned:
+                            continue
+
+                        # Kiểm tra Whitelist: Bỏ qua nếu IoC là hợp pháp
+                        is_whitelisted = False
+                        for wl_pattern in WHITELIST_PATTERNS:
+                            if wl_pattern.search(cleaned):
+                                is_whitelisted = True
+                                break
+
+                        if is_whitelisted:
+                            whitelisted_count += 1
+                            continue
+
+                        ioc_sets[category].add(cleaned)
                 except Exception:
                     continue
+
+        result["whitelisted_count"] = whitelisted_count
 
         # Chuyển set sang list cho output JSON
         for category in ioc_sets:

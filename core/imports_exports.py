@@ -64,12 +64,14 @@ def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "status": "success",
         "error_message": None,
+        "is_dot_net": False,
         "imports": {},
         "exports": [],
         "suspicious_imports": []
     }
 
     suspicious_found: List[str] = []
+    is_dot_net = False
 
     # --- Xử lý Imports (riêng biệt để lỗi không ảnh hưởng Exports) ---
     try:
@@ -104,6 +106,10 @@ def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
 
                 if func_names:
                     result["imports"][dll_name] = func_names
+
+                # Nhận diện .NET Framework qua mscoree.dll
+                if dll_name.lower() == "mscoree.dll":
+                    is_dot_net = True
 
     except pefile.PEFormatError as e:
         result["status"] = "partial_error"
@@ -145,6 +151,7 @@ def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
 
     # Loại bỏ trùng lặp nhưng giữ nguyên thứ tự (Python 3.7+)
     result["suspicious_imports"] = list(dict.fromkeys(suspicious_found))
+    result["is_dot_net"] = is_dot_net
 
     # Nếu cả hai khối đều lỗi thì status là "error" thay vì "partial_error"
     if not result["imports"] and not result["exports"] and result["error_message"]:

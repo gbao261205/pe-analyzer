@@ -63,6 +63,26 @@ def render_hashes(hash_data: Dict[str, Any]) -> None:
     ))
 
 
+def render_signature(signature_data: Dict[str, Any]) -> None:
+    """
+    Hiển thị trạng thái Chữ ký số Authenticode ra terminal.
+
+    Args:
+        signature_data (Dict[str, Any]): Dictionary trả về từ core/signature.py.
+    """
+    is_signed = signature_data.get("is_signed", False)
+    status = signature_data.get("status", "error")
+
+    if status == "error":
+        error_msg = signature_data.get("error_message", "Lỗi không xác định.")
+        console.print(f"  [{_CLR_WARN}]⚠ Authenticode: {error_msg}[/]")
+    elif is_signed:
+        console.print(f"  [{_CLR_SAFE}]✔ Authenticode: Signed (Presence Only - Validity Unverified)[/]")
+    else:
+        console.print(f"  [{_CLR_WARN}]⚠ Authenticode: Unsigned (Không có chữ ký số)[/]")
+
+    console.print()
+
 def render_yara(yara_data: Dict[str, Any]) -> None:
     """
     Hiển thị kết quả quét YARA ra terminal.
@@ -289,6 +309,17 @@ def render_imports(import_data: Dict[str, Any]) -> None:
     console.print(f"[{_CLR_INFO}]  📦  IMPORTS / EXPORTS ANALYSIS[/]")
     console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
 
+    # Nhận diện .NET Framework
+    is_dot_net = import_data.get("is_dot_net", False)
+    if is_dot_net:
+        console.print(Panel(
+            "[bold cyan]🔷 Architecture: C# .NET Framework[/]\n"
+            "[dim]File này sử dụng mscoree.dll — mã trung gian (IL/MSIL). "
+            "Entropy cao ở .rsrc là bình thường.[/]",
+            border_style="cyan",
+            padding=(0, 2),
+        ))
+
     # Kiểm tra lỗi
     status = import_data.get("status", "error")
     error_msg = import_data.get("error_message")
@@ -405,9 +436,14 @@ def render_strings_iocs(strings_data: Dict[str, Any]) -> None:
         return
 
     total_strings = strings_data.get("total_strings_count", 0)
+    whitelisted_count = strings_data.get("whitelisted_count", 0)
     iocs = strings_data.get("iocs", {})
 
     console.print(f"  Tổng số chuỗi trích xuất: [{_CLR_INFO}]{total_strings}[/]")
+    if whitelisted_count > 0:
+        console.print(
+            f"  Đã lọc bỏ (Whitelist):   [{_CLR_DIM}]{whitelisted_count} IoCs an toàn[/]"
+        )
     console.print()
 
     # Cấu hình hiển thị cho từng loại IoC: (key, icon, label, color)
@@ -552,9 +588,15 @@ def render_batch_summary(results: List[Dict[str, Any]]) -> None:
             row_style = _CLR_SAFE
             status_label = "✔ SAFE"
 
+        is_signed = item.get("is_signed", False)
+        prefix_icon = "[bold green]✔[/] " if is_signed else "[bold yellow]⚠[/] "
+        
+        file_name_display = Text.from_markup(f"{prefix_icon}")
+        file_name_display.append(file_name, style=row_style)
+
         table.add_row(
             str(idx),
-            Text(file_name, style=row_style),
+            file_name_display,
             Text(size_str, style=_CLR_DIM),
             Text(str(suspicious_apis), style=_CLR_DANGER if suspicious_apis > 0 else _CLR_DIM),
             Text(flags_str, style=_CLR_DANGER if section_flags else _CLR_DIM),
@@ -564,3 +606,4 @@ def render_batch_summary(results: List[Dict[str, Any]]) -> None:
         )
 
     console.print(table)
+    console.print("  [dim]Ghi chú: ([bold green]✔[/dim]) File có chữ ký số | ([bold yellow]⚠[/dim]) File không có chữ ký số (Unsigned)[/]")

@@ -8,10 +8,11 @@
 
 ## 🌟 Các tính năng nổi bật
 * **Cryptographic & Fuzzy Hashes**: Tính toán MD5, SHA-256, Imphash (Import Hash) và đặc biệt là TLSH (Fuzzy Hashing) để nhận dạng độ tương đồng mã độc.
-* **YARA Rule Engine**: Tích hợp quét YARA để đối chiếu file với các mẫu nhận diện (signatures) của các chủng mã độc đã biết.
-* **Entropy & Phân quyền Sections**: Trích xuất các phân vùng `.text`, `.data`...; phát hiện các cờ nghi vấn như RWX (Read/Write/Execute), kích thước bất thường (Size Anomaly), và tính toán Shannon Entropy để phát hiện mã độc bị Pack/Obfuscated.
+* **Authenticode Signature Check**: Kiểm tra chữ ký số trực tiếp từ PE Data Directory, hiển thị trạng thái Signed/Unsigned ngay trên giao diện nhằm phân tách nhanh các file vô danh.
+* **YARA Rule Engine**: Tích hợp quét YARA để đối chiếu file với các mẫu nhận diện (signatures). Phân loại trọng số thông minh theo 4 nhóm rule: Malware, Packer, Crypto, Generic.
+* **Context-Aware Entropy & Sections**: Trích xuất các phân vùng `.text`, `.data`...; phát hiện các cờ nghi vấn như RWX. Nhận diện kiến trúc phần mềm (VD: C# .NET) để bỏ qua các cảnh báo Entropy giả trên `.rsrc`.
 * **Phân tích Imports / Exports**: Quét Bảng Import (IAT) để tìm kiếm các Windows API nguy hiểm (Process Injection, Keylogging, Network communication...).
-* **Trích xuất IoCs thông minh (Strings)**: Sử dụng các biểu thức chính quy (Regex) tối ưu để rà quét và tự động phân loại IPv4, IPv6, URL, Tên miền (Domain), Email liên hệ của Ransomware, Ví Bitcoin, Command Lines và Registry Keys.
+* **Trích xuất IoCs & Smart Whitelist**: Sử dụng Biểu thức chính quy (Regex) tối ưu để trích xuất IPv4, IPv6, URL, Domain, Email Ransomware, Wallet, Registry. Đặc biệt trang bị **Whitelist Filter** để loại bỏ 100% cảnh báo giả từ Local IPs, Microsoft Domains, hãng chứng chỉ và Namespace .NET.
 * **Threat Risk Assessment (Chấm điểm rủi ro)**: Đánh giá file theo thang điểm từ `0` đến `100` với 5 mức độ (SAFE, LOW, MEDIUM, HIGH, CRITICAL). Trả về danh sách chi tiết nguyên nhân (Reasons) của điểm số.
 * **Giao diện Terminal siêu trực quan**: Giao diện thiết kế theo chuẩn công cụ SOC chuyên nghiệp sử dụng thư viện `rich` với các bảng màu trực quan: Đỏ (Nguy hiểm), Vàng (Cảnh báo), Xanh (An toàn).
 * **Batch Scan & Xuất báo cáo (JSON)**: Hỗ trợ quét hàng loạt tệp trong một thư mục bằng thanh tiến trình (Progress Bar), và lưu kết quả chi tiết của Master Report vào file `JSON`.
@@ -55,9 +56,10 @@ pe_analyzer/
 ├── core/                    # Mã nguồn các module phân tích:
 │   ├── hashes.py            # Xử lý MD5, SHA-256, Imphash, TLSH.
 │   ├── imports_exports.py   # Quét bảng IAT, EAT, phát hiện API độc hại.
-│   ├── scoring.py           # Thuật toán chấm điểm rủi ro 0-100.
+│   ├── scoring.py           # Thuật toán chấm điểm rủi ro Context-aware 0-100.
 │   ├── sections.py          # Xử lý PE Sections, Entropy, Permissions.
-│   ├── strings_analyzer.py  # Trích xuất Strings, quét IoC với Regex.
+│   ├── signature.py         # Kiểm tra sự tồn tại của Chữ ký số Authenticode.
+│   ├── strings_analyzer.py  # Trích xuất Strings, quét IoC với Regex & Whitelist.
 │   └── yara_scanner.py      # Module quét và compile YARA.
 ├── ui/                      # Giao diện
 │   └── renderer.py          # Render giao diện bằng thư viện `rich`.

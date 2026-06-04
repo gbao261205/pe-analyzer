@@ -2,7 +2,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
+from rich.align import Align
 from typing import Dict, Any, List
+from core.constants import MAX_BATCH_SUMMARY_DISPLAY
 
 # Đối tượng Console toàn cục cho module UI
 console = Console()
@@ -507,12 +509,24 @@ def render_batch_summary(results: List[Dict[str, Any]]) -> None:
 
     total_scanned = len(results)
     suspicious_results = [r for r in results if r.get("is_suspicious", False)]
-    clean_count = total_scanned - len(suspicious_results)
+    corrupted_count = sum(1 for r in results if r.get("status_type") == "corrupted")
+    error_count = sum(1 for r in results if r.get("status_type") == "system_error")
+    clean_count = total_scanned - len(suspicious_results) - corrupted_count - error_count
 
     # Thống kê tổng quan
-    console.print(f"\n  Tổng số file đã quét:   [{_CLR_INFO}]{total_scanned}[/]")
-    console.print(f"  File sạch (Clean):      [{_CLR_SAFE}]{clean_count}[/]")
-    console.print(f"  File khả nghi:          [{_CLR_DANGER}]{len(suspicious_results)}[/]")
+    console.print(f"\n  Tổng số file đã quét:       [{_CLR_INFO}]{total_scanned}[/]")
+    console.print(f"  File sạch (Clean):          [{_CLR_SAFE}]{clean_count}[/]")
+    console.print(f"  File khả nghi (Suspicious): [{_CLR_DANGER}]{len(suspicious_results)}[/]")
+
+    if corrupted_count > 0:
+        console.print(f"  File lỗi định dạng (Corrupted): [dim yellow]{corrupted_count}[/]")
+
+    if error_count > 0:
+        console.print(
+            f"  Lỗi hệ thống (System Errors):  [bold red]{error_count}[/]"
+            f"  [dim]— Chi tiết xem tại reports/error.log[/]"
+        )
+
     console.print()
 
     if not suspicious_results:
@@ -525,12 +539,12 @@ def render_batch_summary(results: List[Dict[str, Any]]) -> None:
     # Sắp xếp theo mức độ nguy hiểm (risk_score) giảm dần
     suspicious_results.sort(key=lambda r: r.get("risk_score", 0), reverse=True)
 
-    # Giới hạn hiển thị tối đa 20 file
-    display_results = suspicious_results[:20]
+    # Giới hạn hiển thị tối đa
+    display_results = suspicious_results[:MAX_BATCH_SUMMARY_DISPLAY]
 
-    if len(suspicious_results) > 20:
+    if len(suspicious_results) > MAX_BATCH_SUMMARY_DISPLAY:
         console.print(
-            f"  [{_CLR_WARN}]⚠ Hiển thị top 20/{len(suspicious_results)} "
+            f"  [{_CLR_WARN}]⚠ Hiển thị top {MAX_BATCH_SUMMARY_DISPLAY}/{len(suspicious_results)} "
             f"file khả nghi nhất.[/]"
         )
         console.print()

@@ -1,7 +1,12 @@
 import os
 import sys
+import traceback
+from datetime import datetime
+import logging
+import logging.handlers
+import multiprocessing
 import pefile
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from rich.progress import (
     Progress,
@@ -27,9 +32,10 @@ from core.sections import analyze_sections
 from core.imports_exports import analyze_imports_exports
 from core.strings_analyzer import analyze_strings
 from core.hashes import calculate_hashes
-from core.yara_scanner import scan_with_yara
+from core.yara_scanner import scan_with_yara, compile_yara_rules
 from core.signature import check_signature
 from core.scoring import calculate_risk_score
+from core.constants import PE_EXTENSIONS, DEFAULT_ENTROPY_THRESHOLD, SCORE_LIMIT_SAFE
 from utils.exporter import export_to_json
 from rich.panel import Panel
 
@@ -37,9 +43,6 @@ from rich.panel import Panel
 #  PE STATIC FEATURE EXTRACTOR — Entry Point
 #  Maintainer: Nguyễn Gia Bảo
 # ═══════════════════════════════════════════════════════════
-
-# Các đuôi file thực thi phổ biến cần quét
-_PE_EXTENSIONS = {".exe", ".dll", ".sys", ".bin"}
 
 _BANNER = r"""
 [bold cyan]
@@ -193,18 +196,71 @@ def collect_pe_files(directory: str) -> List[str]:
     for root, _dirs, files in os.walk(directory):
         for f in files:
             ext = os.path.splitext(f)[1].lower()
-            if ext in _PE_EXTENSIONS:
+            if ext in PE_EXTENSIONS:
                 pe_files.append(os.path.join(root, f))
     return pe_files
 
 
-def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
+class BatchLogFormatter(logging.Formatter):
+    def format(self, record):
+        timestamp = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
+        pe_file = getattr(record, "pe_file", "UNKNOWN_FILE")
+        
+        msg = f"[{timestamp}] FILE: {pe_file}\n"
+        msg += f"  ERROR: {record.getMessage()}\n"
+        if record.exc_info:
+            if not record.exc_text:
+                record.exc_text = self.formatException(record.exc_info)
+            msg += f"  TRACEBACK:\n{record.exc_text}\n"
+        msg += f"{'─' * 80}"
+        
+        return msg
+
+
+def setup_batch_logging() -> tuple[Optional[multiprocessing.Queue], Optional[logging.handlers.QueueListener]]:
+    """Thiết lập logging an toàn cho đa tiến trình sử dụng QueueListener."""
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    reports_dir = os.path.join(project_root, "reports")
+    
+    try:
+        os.makedirs(reports_dir, exist_ok=True)
+    except OSError:
+        return None, None
+        
+    log_path = os.path.join(reports_dir, "error.log")
+    
+    log_queue = multiprocessing.Queue(-1)
+    file_handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    file_handler.setFormatter(BatchLogFormatter())
+    
+    listener = logging.handlers.QueueListener(log_queue, file_handler)
+    listener.start()
+    return log_queue, listener
+
+
+def configure_worker_logger(log_queue: multiprocessing.Queue) -> logging.Logger:
+    """Cấu hình logger cho mỗi process/worker trỏ về Queue."""
+    logger = logging.getLogger("BatchWorker")
+    logger.setLevel(logging.ERROR)
+    logger.propagate = False
+    
+    # Xóa các handler cũ nếu có
+    if logger.hasHandlers():
+        logger.handlers.clear()
+        
+    queue_handler = logging.handlers.QueueHandler(log_queue)
+    logger.addHandler(queue_handler)
+    return logger
+
+
+def run_batch_scan(directory: str, compiled_rules: Optional["yara.Rules"]) -> List[Dict[str, Any]]:
     """
     Quét hàng loạt tất cả file PE trong thư mục, hiển thị thanh tiến trình,
     và trả về danh sách kết quả tóm tắt.
 
     Args:
         directory (str): Đường dẫn thư mục cần quét.
+        compiled_rules (Optional["yara.Rules"]): Đối tượng luật YARA đã được biên dịch.
 
     Returns:
         List[Dict[str, Any]]: Danh sách kết quả phân tích từng file.
@@ -216,6 +272,12 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
     if not pe_files:
         console.print("  [bold yellow]⚠ Không tìm thấy file PE nào trong thư mục.[/]")
         return []
+
+    # --- Setup Logging an toàn cho Thread/Process ---
+    log_queue, log_listener = setup_batch_logging()
+    batch_logger = None
+    if log_queue:
+        batch_logger = configure_worker_logger(log_queue)
 
     console.print(f"  [bold cyan]📋 Tìm thấy {len(pe_files)} file PE. Bắt đầu phân tích...[/]\n")
 
@@ -245,7 +307,7 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                 pe = pefile.PE(file_path)
 
                 # --- Chạy 6 module Core ---
-                yara_data = scan_with_yara(file_path)
+                yara_data = scan_with_yara(file_path, compiled_rules)
                 hash_data = calculate_hashes(file_path, pe)
                 section_data = analyze_sections(pe)
                 import_data = analyze_imports_exports(pe)
@@ -256,7 +318,7 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                 scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data, signature_data)
                 risk_score = scoring_data.get("risk_score", 0)
                 risk_level = scoring_data.get("risk_level", "SAFE")
-                is_suspicious = risk_score >= 16
+                is_suspicious = risk_score > SCORE_LIMIT_SAFE
 
                 # --- Đánh giá nhanh (Dành cho Summary Table) ---
                 section_flags: List[str] = []
@@ -265,7 +327,7 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                 for sec in section_data.get("sections", []):
                     if sec.get("is_rwx", False):
                         section_flags.append("RWX")
-                    if sec.get("entropy", 0) > 7.2:
+                    if sec.get("entropy", 0) > DEFAULT_ENTROPY_THRESHOLD:
                         section_flags.append("HIGH_ENTROPY")
                     if sec.get("has_size_anomaly", False):
                         section_flags.append("SIZE_ANOMALY")
@@ -284,6 +346,7 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                     "file_name": file_name,
                     "file_path": file_path,
                     "file_size": file_size,
+                    "status_type": "success",
                     "is_suspicious": is_suspicious,
                     "risk_score": risk_score,
                     "risk_level": risk_level,
@@ -293,12 +356,32 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
                     "is_signed": signature_data.get("is_signed", False),
                 })
 
-            except (pefile.PEFormatError, Exception):
-                # File rác hoặc PE bị hỏng — bỏ qua, không in lỗi để giữ progress bar
+            except pefile.PEFormatError:
+                # File không phải định dạng PE hợp lệ hoặc header bị hỏng
                 scan_results.append({
                     "file_name": file_name,
                     "file_path": file_path,
                     "file_size": file_size,
+                    "status_type": "corrupted",
+                    "is_suspicious": False,
+                    "risk_score": 0,
+                    "risk_level": "SAFE",
+                    "suspicious_api_count": 0,
+                    "section_flags": [],
+                    "iocs_count": 0,
+                    "is_signed": False,
+                })
+
+            except Exception as e:
+                # Lỗi hệ thống hoặc lỗi logic code — ghi log chi tiết ra Queue an toàn
+                if batch_logger:
+                    batch_logger.error(f"{type(e).__name__}: {e}", exc_info=True, extra={"pe_file": file_path})
+                    
+                scan_results.append({
+                    "file_name": file_name,
+                    "file_path": file_path,
+                    "file_size": file_size,
+                    "status_type": "system_error",
                     "is_suspicious": False,
                     "risk_score": 0,
                     "risk_level": "SAFE",
@@ -318,6 +401,10 @@ def run_batch_scan(directory: str) -> List[Dict[str, Any]]:
 
                 progress.advance(task)
 
+    # Dọn dẹp Listener khi kết thúc vòng lặp Batch Scan
+    if log_listener:
+        log_listener.stop()
+
     return scan_results
 
 
@@ -326,7 +413,7 @@ def pause() -> None:
     console.input("\n  [dim][ Nhấn Enter để quay lại Menu... ][/]")
 
 
-def run_single_scan() -> None:
+def run_single_scan(compiled_rules: Optional["yara.Rules"]) -> None:
     """Chế độ phân tích chi tiết một file PE duy nhất."""
     pe = None
 
@@ -336,7 +423,7 @@ def run_single_scan() -> None:
 
         # Chạy phân tích
         console.print("\n  [dim]⏳ Đang phân tích file...[/]")
-        yara_data = scan_with_yara(file_path)
+        yara_data = scan_with_yara(file_path, compiled_rules)
         hash_data = calculate_hashes(file_path, pe)
         section_data = analyze_sections(pe)
         import_data = analyze_imports_exports(pe)
@@ -415,9 +502,17 @@ def run_single_scan() -> None:
 def main() -> None:
     """Hàm chính — Entry Point của chương trình."""
     try:
+        clear_screen()
+        print_banner()
+        
+        # Compile YARA rules once at startup
+        compiled_rules = compile_yara_rules()
+        if compiled_rules:
+            console.print("  [dim cyan][INFO] Đã nạp thành công các luật YARA từ thư mục /rules.[/]\n")
+        else:
+            console.print("  [bold yellow][WARN] Không tìm thấy luật YARA nào hoặc thư viện chưa được cài đặt. Tính năng quét YARA sẽ bị bỏ qua.[/]\n")
+            
         while True:
-            clear_screen()
-            print_banner()
             console.print(_MODE_MENU)
 
             try:
@@ -429,14 +524,14 @@ def main() -> None:
                 # --- Single Scan ---
                 clear_screen()
                 print_banner()
-                run_single_scan()
+                run_single_scan(compiled_rules)
 
             elif mode == "2":
                 # --- Batch Scan ---
                 clear_screen()
                 print_banner()
                 dir_path = get_directory_path()
-                results = run_batch_scan(dir_path)
+                results = run_batch_scan(dir_path, compiled_rules)
 
                 if results:
                     clear_screen()

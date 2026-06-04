@@ -13,9 +13,10 @@
 * **Context-Aware Entropy & Sections**: Trích xuất các phân vùng `.text`, `.data`...; phát hiện các cờ nghi vấn như RWX. Nhận diện kiến trúc phần mềm (VD: C# .NET) để bỏ qua các cảnh báo Entropy giả trên `.rsrc`.
 * **Phân tích Imports / Exports**: Quét Bảng Import (IAT) để tìm kiếm các Windows API nguy hiểm (Process Injection, Keylogging, Network communication...).
 * **Trích xuất IoCs & Smart Whitelist**: Sử dụng Biểu thức chính quy (Regex) tối ưu để trích xuất IPv4, IPv6, URL, Domain, Email Ransomware, Wallet, Registry. Đặc biệt trang bị **Whitelist Filter** để loại bỏ 100% cảnh báo giả từ Local IPs, Microsoft Domains, hãng chứng chỉ và Namespace .NET.
-* **Threat Risk Assessment (Chấm điểm rủi ro)**: Đánh giá file theo thang điểm từ `0` đến `100` với 5 mức độ (SAFE, LOW, MEDIUM, HIGH, CRITICAL). Trả về danh sách chi tiết nguyên nhân (Reasons) của điểm số.
+* **Threat Risk Assessment (Chấm điểm rủi ro)**: Đánh giá file theo thang điểm từ `0` đến `100` với 5 mức độ (SAFE, LOW, MEDIUM, HIGH, CRITICAL). Trả về danh sách chi tiết nguyên nhân (Reasons) của điểm số. Tích hợp **Configuration Management** giúp dễ dàng tinh chỉnh các ngưỡng điểm, trọng số YARA và Entropy tại file `core/constants.py` duy nhất.
+* **Batch Scan An Toàn (Safe Execution)**: Hỗ trợ quét hàng loạt tệp với thanh tiến trình. Xử lý ngoại lệ với cơ chế **Queue-based System Error Logging** nhằm đảm bảo độ ổn định khi quét số lượng lớn, tránh crash hệ thống và lưu vết đầy đủ traceback vào `reports/error.log`.
 * **Giao diện Terminal siêu trực quan**: Giao diện thiết kế theo chuẩn công cụ SOC chuyên nghiệp sử dụng thư viện `rich` với các bảng màu trực quan: Đỏ (Nguy hiểm), Vàng (Cảnh báo), Xanh (An toàn).
-* **Batch Scan & Xuất báo cáo (JSON)**: Hỗ trợ quét hàng loạt tệp trong một thư mục bằng thanh tiến trình (Progress Bar), và lưu kết quả chi tiết của Master Report vào file `JSON`.
+* **Tối ưu Hóa Hiệu Suất YARA**: Cơ chế **Pre-compile YARA Rules** tại Application Startup (Khởi động ứng dụng), giúp tăng vọt hiệu suất khi quét hàng loạt file.
 
 ## ⚙️ Cài đặt
 
@@ -25,12 +26,15 @@
    git clone https://github.com/gbao261205/pe-analyzer.git
    cd pe-analyzer
    ```
-3. Cài đặt các thư viện yêu cầu:
+3. Khởi tạo môi trường ảo và cài đặt thư viện được ghim phiên bản (Pinned Dependencies):
    ```bash
-   pip install pefile rich yara-python tlsh
+   python -m venv venv
+   source venv/bin/activate  # (Linux/MacOS)
+   venv\Scripts\activate     # (Windows)
+   pip install -r requirements.txt
    ```
 
-*Lưu ý:* Nếu bạn không thể cài đặt `tlsh` hoặc `yara-python` trên môi trường của mình, công cụ vẫn sẽ tự động vô hiệu hóa tính năng đó và hoạt động bình thường trên các module còn lại.
+*Lưu ý:* Nếu bạn không thể cài đặt `tlsh` hoặc `yara-python` trên môi trường của mình (ví dụ thiếu trình biên dịch C++), công cụ vẫn sẽ tự động vô hiệu hóa tính năng đó và hoạt động bình thường trên các module còn lại.
 
 ## 🚀 Hướng dẫn sử dụng
 
@@ -50,10 +54,12 @@ Trong chế độ Single Scan, chọn tùy chọn `[4]` để lưu trữ toàn b
 ## 📁 Cấu trúc dự án
 ```
 pe_analyzer/
-├── main.py                  # Entry Point chạy CLI Menu.
+├── main.py                  # Entry Point chạy CLI Menu. Điều phối luồng và Error Logging.
+├── requirements.txt         # File cố định phiên bản các thư viện môi trường (Pinned versions).
 ├── rules/                   # Thư mục thả các file luật YARA (.yar, .yara).
-├── reports/                 # Nơi lưu trữ tự động các file JSON xuất ra.
+├── reports/                 # Nơi lưu trữ file JSON báo cáo và error.log.
 ├── core/                    # Mã nguồn các module phân tích:
+│   ├── constants.py         # Quản lý cấu hình tập trung (Ngưỡng điểm, Entropy, Extensions).
 │   ├── hashes.py            # Xử lý MD5, SHA-256, Imphash, TLSH.
 │   ├── imports_exports.py   # Quét bảng IAT, EAT, phát hiện API độc hại.
 │   ├── scoring.py           # Thuật toán chấm điểm rủi ro Context-aware 0-100.

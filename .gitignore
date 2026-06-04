@@ -30,5 +30,5 @@ reports/
 *.sqlite
 *.db
 
-# Thư mục Docs (theo yêu cầu người dùng)
-/docs/
+# Tệp thực thi bên thứ ba
+Codex Installer.exe

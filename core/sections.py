@@ -1,6 +1,7 @@
 import math
 import pefile
 from typing import Dict, Any
+from core.constants import DEFAULT_ENTROPY_THRESHOLD
 
 def calculate_entropy(data: bytes) -> float:
     """
@@ -115,7 +116,7 @@ def analyze_sections(pe: pefile.PE) -> Dict[str, Any]:
             has_size_anomaly = raw_size > 0 and virtual_size >= raw_size * 1.2
             
             # Section bị suspicious nếu entropy cao HOẶC có cờ RWX HOẶC kích thước bất thường
-            is_suspicious = entropy > 7.2 or is_rwx or has_size_anomaly
+            is_suspicious = entropy > DEFAULT_ENTROPY_THRESHOLD or is_rwx or has_size_anomaly
             
             section_info = {
                 "name": name,

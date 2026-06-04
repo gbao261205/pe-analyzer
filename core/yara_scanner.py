@@ -12,7 +12,7 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def _compile_rules() -> Optional['yara.Rules']:
+def compile_yara_rules() -> Optional["yara.Rules"]:
     """
     Biên dịch tất cả các file luật YARA (*.yar, *.yara) trong thư mục 'rules/'.
     
@@ -51,12 +51,13 @@ def _compile_rules() -> Optional['yara.Rules']:
         logger.error(f"YARA Compile Error: {e}")
         return None
 
-def scan_with_yara(file_path: str) -> Dict[str, Any]:
+def scan_with_yara(file_path: str, compiled_rules: Optional["yara.Rules"]) -> Dict[str, Any]:
     """
     Quét file bằng engine YARA dựa trên các tập luật tự định nghĩa.
     
     Args:
         file_path (str): Đường dẫn tới file cần quét.
+        compiled_rules (Optional["yara.Rules"]): Đối tượng luật YARA đã được biên dịch.
         
     Returns:
         Dict[str, Any]: Kết quả quét YARA.
@@ -72,7 +73,6 @@ def scan_with_yara(file_path: str) -> Dict[str, Any]:
         result["error_message"] = "Thư viện yara-python chưa được cài đặt."
         return result
         
-    compiled_rules = _compile_rules()
     if compiled_rules is None:
         result["status"] = "no_rules"
         result["error_message"] = "Không tìm thấy file luật YARA (.yar) hoặc lỗi biên dịch."

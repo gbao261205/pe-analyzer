@@ -7,16 +7,17 @@ Hoàn thiện Batch Scan và xuất báo cáo JSON/CSV. Hệ thống đã chạy
 - *(Không có task nào trong backlog)*
 
 ## ⏳ In Progress
-- [ ] Đóng gói Dependency: Sinh file requirements.txt chuẩn hóa với các phiên bản thư viện được cố định (pinned versions) để đảm bảo tính đồng nhất khi triển khai.
-- [ ] Tái cấu trúc bằng Dataclasses: Thay thế toàn bộ kiểu trả về dạng Dict[str, Any] của các module trong thư mục core/ bằng các cấu trúc dữ liệu tường minh (dataclasses hoặc pydantic.BaseModel).  
-- [ ] Cập nhật UI & Exporter: Refactor lại logic trong ui/renderer.py và utils/exporter.py để truy xuất dữ liệu thông qua thuộc tính của đối tượng (Object Attributes) thay vì sử dụng phương thức .get() của Dictionary.  
-- [ ] Tích hợp Python Logging: Xây dựng hệ thống log chuẩn của Python song song với rich.console, hỗ trợ ghi log lỗi chi tiết ra file log định kỳ mà không làm ảnh hưởng đến giao diện CLI.  
+
+
 - [ ] Xây dựng khung kiểm thử (Testing Framework): Cài đặt pytest và viết các bài unit test đầu tiên cho cấu phần chấm điểm rủi ro (core/scoring.py) bằng cách sử dụng kỹ thuật mock dữ liệu đầu vào.
 - [ ] Áp dụng Multiprocessing: Cải tiến tính năng Batch Scan bằng cách tích hợp concurrent.futures.ProcessPoolExecutor để tận dụng tối đa sức mạnh đa nhân của CPU khi xử lý hàng loạt file nặng.  
 - [ ] Phân rã God Script (main.py): Tách cấu trúc tuần tự của main.py thành các lớp đối tượng có trách nhiệm rõ ràng như CLIApp (điều phối menu), ScannerEngine (quét luồng đơn) và BatchProcessor (quét luồng song song).  
 - [ ] Chuyển đổi sang src/ Layout: Tái cấu trúc thư mục dự án theo chuẩn phân phối mã nguồn Python hiện đại, đưa toàn bộ mã nguồn ứng dụng vào bên trong thư mục src/.
 
 ## ✅ Done
+- [x] Tích hợp Python Logging: Xây dựng hệ thống log chuẩn sử dụng RotatingFileHandler, hợp nhất log của Single Scan và Batch Scan về `reports/app.log` an toàn, không làm hỏng CLI `rich`.
+- [x] Tái cấu trúc bằng Dataclasses: Thay thế toàn bộ kiểu trả về dạng Dict[str, Any] bằng các dataclass tường minh.
+- [x] Cập nhật UI & Exporter: Refactor ui/renderer.py và utils/exporter.py truy xuất dữ liệu qua thuộc tính của đối tượng.
 - [x] Đóng gói Dependency: Sinh file `requirements.txt` chuẩn hóa với các phiên bản thư viện cố định (pinned versions) để bảo vệ môi trường chạy.
 - [x] Bảo vệ luồng Batch Scan: Tách khối `except` thành `PEFormatError` / `Exception`, ghi log lỗi hệ thống chi tiết ra `reports/error.log` kèm traceback.
 - [x] Quản lý cấu hình & Ngưỡng rủi ro: Tách toàn bộ các tham số cấu hình (Entropy, Risk Limits, YARA weights) ra file tập trung `core/constants.py`.

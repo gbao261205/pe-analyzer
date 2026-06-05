@@ -1,5 +1,7 @@
 import pefile
-from typing import Dict, Any, List, Set
+from typing import List, Set
+
+from core.models import ImportsExportsResult
 
 # Danh sách các API khả nghi thường được mã độc sử dụng.
 # Được phân loại theo hành vi để dễ bảo trì và mở rộng.
@@ -50,7 +52,7 @@ SUSPICIOUS_APIS: Set[str] = {
 }
 
 
-def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
+def analyze_imports_exports(pe: pefile.PE) -> ImportsExportsResult:
     """
     Trích xuất bảng Imports (IAT) và bảng Exports từ file PE.
     Đồng thời đối chiếu các hàm import với danh sách API khả nghi.
@@ -59,16 +61,9 @@ def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
         pe (pefile.PE): Đối tượng file PE đã được nạp bằng thư viện pefile.
 
     Returns:
-        Dict[str, Any]: Dictionary chứa imports, exports, suspicious_imports và trạng thái.
+        ImportsExportsResult: Đối tượng chứa imports, exports, suspicious_imports và trạng thái.
     """
-    result: Dict[str, Any] = {
-        "status": "success",
-        "error_message": None,
-        "is_dot_net": False,
-        "imports": {},
-        "exports": [],
-        "suspicious_imports": []
-    }
+    result = ImportsExportsResult()
 
     suspicious_found: List[str] = []
     is_dot_net = False
@@ -105,18 +100,18 @@ def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
                         suspicious_found.append(func_name)
 
                 if func_names:
-                    result["imports"][dll_name] = func_names
+                    result.imports[dll_name] = func_names
 
                 # Nhận diện .NET Framework qua mscoree.dll
                 if dll_name.lower() == "mscoree.dll":
                     is_dot_net = True
 
     except pefile.PEFormatError as e:
-        result["status"] = "partial_error"
-        result["error_message"] = f"Lỗi định dạng PE khi đọc Imports: {str(e)}"
+        result.status = "partial_error"
+        result.error_message = f"Lỗi định dạng PE khi đọc Imports: {str(e)}"
     except Exception as e:
-        result["status"] = "partial_error"
-        result["error_message"] = f"Lỗi không xác định khi đọc Imports: {str(e)}"
+        result.status = "partial_error"
+        result.error_message = f"Lỗi không xác định khi đọc Imports: {str(e)}"
 
     # --- Xử lý Exports (riêng biệt để lỗi không ảnh hưởng Imports) ---
     try:
@@ -132,29 +127,29 @@ def analyze_imports_exports(pe: pefile.PE) -> Dict[str, Any]:
                 else:
                     continue  # Bỏ qua entry rỗng
 
-                result["exports"].append(export_name)
+                result.exports.append(export_name)
 
     except pefile.PEFormatError as e:
         error_msg = f"Lỗi định dạng PE khi đọc Exports: {str(e)}"
-        if result["error_message"]:
-            result["error_message"] += f" | {error_msg}"
+        if result.error_message:
+            result.error_message += f" | {error_msg}"
         else:
-            result["status"] = "partial_error"
-            result["error_message"] = error_msg
+            result.status = "partial_error"
+            result.error_message = error_msg
     except Exception as e:
         error_msg = f"Lỗi không xác định khi đọc Exports: {str(e)}"
-        if result["error_message"]:
-            result["error_message"] += f" | {error_msg}"
+        if result.error_message:
+            result.error_message += f" | {error_msg}"
         else:
-            result["status"] = "partial_error"
-            result["error_message"] = error_msg
+            result.status = "partial_error"
+            result.error_message = error_msg
 
     # Loại bỏ trùng lặp nhưng giữ nguyên thứ tự (Python 3.7+)
-    result["suspicious_imports"] = list(dict.fromkeys(suspicious_found))
-    result["is_dot_net"] = is_dot_net
+    result.suspicious_imports = list(dict.fromkeys(suspicious_found))
+    result.is_dot_net = is_dot_net
 
     # Nếu cả hai khối đều lỗi thì status là "error" thay vì "partial_error"
-    if not result["imports"] and not result["exports"] and result["error_message"]:
-        result["status"] = "error"
+    if not result.imports and not result.exports and result.error_message:
+        result.status = "error"
 
     return result

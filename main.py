@@ -5,8 +5,21 @@ from datetime import datetime
 import logging
 import logging.handlers
 import multiprocessing
+import dataclasses
 import pefile
+from rich import box
 from typing import List, Dict, Any, Optional
+
+from rich.panel import Panel as _Panel
+from rich.table import Table as _Table
+
+def Panel(*args, **kwargs):
+    kwargs.setdefault('box', box.SQUARE)
+    return _Panel(*args, **kwargs)
+
+def Table(*args, **kwargs):
+    kwargs.setdefault('box', box.SQUARE)
+    return _Table(*args, **kwargs)
 
 from rich.progress import (
     Progress,
@@ -37,6 +50,7 @@ from core.signature import check_signature
 from core.scoring import calculate_risk_score
 from core.constants import PE_EXTENSIONS, DEFAULT_ENTROPY_THRESHOLD, SCORE_LIMIT_SAFE
 from utils.exporter import export_to_json
+from utils.logger import setup_global_logging, get_app_logger, get_log_file_path, get_standard_formatter
 from rich.panel import Panel
 
 # ═══════════════════════════════════════════════════════════
@@ -59,34 +73,17 @@ _BANNER = r"""
 [bold white]  ──────────────────────────────────────────────────────────────────────────────────[/]
 """
 
-_MODE_MENU = """
-[bold cyan]  ╔══════════════════════════════════════════════════════════╗
-  ║                  🚀  SCAN MODE                         ║
-  ╠══════════════════════════════════════════════════════════╣
-  ║                                                        ║
-  ║   [bold yellow][1][/bold yellow]  📄 Phân tích một file PE (Single Scan)            ║
-  ║   [bold yellow][2][/bold yellow]  📁 Quét thư mục hàng loạt (Batch Scan)            ║
-  ║                                                        ║
-  ║   [bold red][0][/bold red]  🚪 Thoát chương trình                             ║
-  ║                                                        ║
-  ╚══════════════════════════════════════════════════════════╝[/]
-"""
+_MODE_MENU_TEXT = """[bold yellow][1][/]  📄 Phân tích một file PE (Single Scan)
+[bold yellow][2][/]  📁 Quét thư mục hàng loạt (Batch Scan)
 
-_ANALYSIS_MENU = """
-[bold cyan]  ╔══════════════════════════════════════════════════════════╗
-  ║                    📋  ANALYSIS MENU                   ║
-  ╠══════════════════════════════════════════════════════════╣
-  ║                                                        ║
-  ║   [bold yellow][1][/bold yellow]  ⚙  Phân tích YARA, Score, Hashes & Sections      ║
-  ║   [bold yellow][2][/bold yellow]  📦 Phân tích Imports / Exports (Suspicious APIs)  ║
-  ║   [bold yellow][3][/bold yellow]  🔍 Phân tích Strings & IoCs (IP, Domains, Cmds)   ║
-  ║   [bold yellow][4][/bold yellow]  📄 Xuất báo cáo JSON                              ║
-  ║                                                        ║
-  ║   [bold red][0][/bold red]  🔙 Quay lại chọn chế độ                            ║
-  ║                                                        ║
-  ╚══════════════════════════════════════════════════════════╝[/]
-"""
+[bold red][0][/]  🚪 Thoát chương trình"""
 
+_ANALYSIS_MENU_TEXT = """[bold yellow][1][/]  ⚙  Phân tích YARA, Score, Hashes & Sections
+[bold yellow][2][/]  📦 Phân tích Imports / Exports (Suspicious APIs)
+[bold yellow][3][/]  🔍 Phân tích Strings & IoCs (IP, Domains, Cmds)
+[bold yellow][4][/]  📄 Xuất báo cáo JSON
+
+[bold red][0][/]  🔙 Quay lại chọn chế độ"""
 
 def clear_screen() -> None:
     """Xóa màn hình terminal, tự nhận diện hệ điều hành."""
@@ -201,37 +198,13 @@ def collect_pe_files(directory: str) -> List[str]:
     return pe_files
 
 
-class BatchLogFormatter(logging.Formatter):
-    def format(self, record):
-        timestamp = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
-        pe_file = getattr(record, "pe_file", "UNKNOWN_FILE")
-        
-        msg = f"[{timestamp}] FILE: {pe_file}\n"
-        msg += f"  ERROR: {record.getMessage()}\n"
-        if record.exc_info:
-            if not record.exc_text:
-                record.exc_text = self.formatException(record.exc_info)
-            msg += f"  TRACEBACK:\n{record.exc_text}\n"
-        msg += f"{'─' * 80}"
-        
-        return msg
-
-
 def setup_batch_logging() -> tuple[Optional[multiprocessing.Queue], Optional[logging.handlers.QueueListener]]:
     """Thiết lập logging an toàn cho đa tiến trình sử dụng QueueListener."""
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    reports_dir = os.path.join(project_root, "reports")
-    
-    try:
-        os.makedirs(reports_dir, exist_ok=True)
-    except OSError:
-        return None, None
-        
-    log_path = os.path.join(reports_dir, "error.log")
+    log_path = get_log_file_path()
     
     log_queue = multiprocessing.Queue(-1)
-    file_handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
-    file_handler.setFormatter(BatchLogFormatter())
+    file_handler = logging.handlers.RotatingFileHandler(log_path, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
+    file_handler.setFormatter(get_standard_formatter())
     
     listener = logging.handlers.QueueListener(log_queue, file_handler)
     listener.start()
@@ -316,31 +289,31 @@ def run_batch_scan(directory: str, compiled_rules: Optional["yara.Rules"]) -> Li
 
                 # --- 7. Tính điểm rủi ro ---
                 scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data, signature_data)
-                risk_score = scoring_data.get("risk_score", 0)
-                risk_level = scoring_data.get("risk_level", "SAFE")
+                risk_score = scoring_data.risk_score
+                risk_level = scoring_data.risk_level
                 is_suspicious = risk_score > SCORE_LIMIT_SAFE
 
                 # --- Đánh giá nhanh (Dành cho Summary Table) ---
                 section_flags: List[str] = []
 
                 # Kiểm tra sections
-                for sec in section_data.get("sections", []):
-                    if sec.get("is_rwx", False):
+                for sec in section_data.sections:
+                    if sec.is_rwx:
                         section_flags.append("RWX")
-                    if sec.get("entropy", 0) > DEFAULT_ENTROPY_THRESHOLD:
+                    if sec.entropy > DEFAULT_ENTROPY_THRESHOLD:
                         section_flags.append("HIGH_ENTROPY")
-                    if sec.get("has_size_anomaly", False):
+                    if sec.has_size_anomaly:
                         section_flags.append("SIZE_ANOMALY")
 
                 # Loại trùng lặp flags
                 section_flags = list(dict.fromkeys(section_flags))
 
-                suspicious_apis = import_data.get("suspicious_imports", [])
+                suspicious_apis = import_data.suspicious_imports
                 suspicious_api_count = len(suspicious_apis)
 
                 # Kiểm tra IoCs
-                iocs = strings_data.get("iocs", {})
-                iocs_count = sum(len(v) for v in iocs.values() if isinstance(v, list))
+                iocs_dict = dataclasses.asdict(strings_data.iocs)
+                iocs_count = sum(len(v) for v in iocs_dict.values() if isinstance(v, list))
 
                 scan_results.append({
                     "file_name": file_name,
@@ -353,7 +326,7 @@ def run_batch_scan(directory: str, compiled_rules: Optional["yara.Rules"]) -> Li
                     "suspicious_api_count": suspicious_api_count,
                     "section_flags": section_flags,
                     "iocs_count": iocs_count,
-                    "is_signed": signature_data.get("is_signed", False),
+                    "is_signed": signature_data.is_signed,
                 })
 
             except pefile.PEFormatError:
@@ -375,7 +348,7 @@ def run_batch_scan(directory: str, compiled_rules: Optional["yara.Rules"]) -> Li
             except Exception as e:
                 # Lỗi hệ thống hoặc lỗi logic code — ghi log chi tiết ra Queue an toàn
                 if batch_logger:
-                    batch_logger.error(f"{type(e).__name__}: {e}", exc_info=True, extra={"pe_file": file_path})
+                    batch_logger.error(f"Lỗi khi xử lý file {file_path} - {type(e).__name__}: {e}", exc_info=True)
                     
                 scan_results.append({
                     "file_name": file_name,
@@ -416,21 +389,38 @@ def pause() -> None:
 def run_single_scan(compiled_rules: Optional["yara.Rules"]) -> None:
     """Chế độ phân tích chi tiết một file PE duy nhất."""
     pe = None
+    logger = get_app_logger()
 
     try:
         file_path = get_file_path()
+        logger.info(f"Bắt đầu phân tích Single Scan cho file: {file_path}")
         pe = load_pe(file_path)
 
         # Chạy phân tích
         console.print("\n  [dim]⏳ Đang phân tích file...[/]")
+        
         yara_data = scan_with_yara(file_path, compiled_rules)
+        logger.info("Hoàn tất quét YARA.")
+        
         hash_data = calculate_hashes(file_path, pe)
+        logger.info("Hoàn tất tính toán mã băm.")
+        
         section_data = analyze_sections(pe)
+        logger.info("Hoàn tất phân tích phân vùng (Sections).")
+        
         import_data = analyze_imports_exports(pe)
+        logger.info("Hoàn tất phân tích Imports/Exports.")
+        
         strings_data = analyze_strings(pe)
+        logger.info("Hoàn tất phân tích chuỗi và trích xuất IoCs.")
+        
         signature_data = check_signature(pe)
+        logger.info("Hoàn tất kiểm tra chữ ký số Authenticode.")
+        
         scoring_data = calculate_risk_score(section_data, import_data, strings_data, yara_data, signature_data)
+        
         console.print("  [bold green]✔ Phân tích hoàn tất![/]")
+        logger.info("Single Scan hoàn tất.")
         console.input("\n  [dim][ Nhấn Enter để vào Menu phân tích... ][/]")
 
         # Vòng lặp Analysis Menu
@@ -440,7 +430,13 @@ def run_single_scan(compiled_rules: Optional["yara.Rules"]) -> None:
             console.print(
                 f"  [bold white]📄 File đang phân tích:[/] [bold yellow]{file_path}[/]"
             )
-            console.print(_ANALYSIS_MENU)
+            console.print(Panel(
+                _ANALYSIS_MENU_TEXT,
+                title="[bold cyan]📋  ANALYSIS MENU[/]",
+                border_style="cyan",
+                padding=(1, 4),
+                width=70
+            ))
 
             try:
                 choice = console.input("  [bold cyan]👉 Chọn chức năng (0-4): [/]").strip()
@@ -491,6 +487,14 @@ def run_single_scan(compiled_rules: Optional["yara.Rules"]) -> None:
                 )
                 pause()
 
+    except pefile.PEFormatError as e:
+        logger.error(f"Lỗi định dạng PE: {e}")
+        console.print(f"  [bold red]✘ Lỗi định dạng PE:[/] {e}")
+        pause()
+    except Exception as e:
+        logger.error(f"Lỗi hệ thống không mong muốn: {e}", exc_info=True)
+        console.print(f"  [bold red]✘ Lỗi hệ thống:[/] {e}")
+        pause()
     finally:
         if pe is not None:
             try:
@@ -500,7 +504,11 @@ def run_single_scan(compiled_rules: Optional["yara.Rules"]) -> None:
 
 
 def main() -> None:
-    """Hàm chính — Entry Point của chương trình."""
+    """Hàm chạy chính."""
+    setup_global_logging()
+    logger = get_app_logger()
+    logger.info("PE Analyzer bắt đầu khởi chạy.")
+    
     try:
         clear_screen()
         print_banner()
@@ -513,7 +521,13 @@ def main() -> None:
             console.print("  [bold yellow][WARN] Không tìm thấy luật YARA nào hoặc thư viện chưa được cài đặt. Tính năng quét YARA sẽ bị bỏ qua.[/]\n")
             
         while True:
-            console.print(_MODE_MENU)
+            console.print(Panel(
+            _MODE_MENU_TEXT,
+            title="[bold cyan]🚀  SCAN MODE[/]",
+            border_style="cyan",
+            padding=(1, 4),
+            width=60
+        ))
 
             try:
                 mode = console.input("  [bold cyan]👉 Chọn chế độ (0-2): [/]").strip()

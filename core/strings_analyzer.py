@@ -1,6 +1,8 @@
 import re
 import pefile
-from typing import Dict, Any, Set, List
+from typing import Dict, Set, List
+
+from core.models import IoCs, StringsResult
 
 # --- Regex Patterns biên dịch sẵn để tăng tốc so khớp ---
 # Dùng re.IGNORECASE cho các pattern cần khớp cả chữ hoa/thường.
@@ -14,7 +16,7 @@ COMPILED_PATTERNS: Dict[str, re.Pattern] = {
 
     # URLs: http, https, ftp, smb
     "urls": re.compile(
-        r'(?:https?|ftp|smb)://[^\s<>\"\'\x00]+',
+        r'(?:https?|ftp|smb)://[^\s<>\"\'\\x00]+',
         re.IGNORECASE
     ),
 
@@ -48,7 +50,7 @@ COMPILED_PATTERNS: Dict[str, re.Pattern] = {
 
     # Standalone Domains: Tên miền không có giao thức, hardcode trong binary
     "domains": re.compile(
-        r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+'
+        r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+' 
         r'(?:com|net|org|xyz|top|info|io|ru|cn|tk|ml|ga|cf|gq|cc|pw|biz|ws|su|onion)\b',
         re.IGNORECASE
     ),
@@ -141,7 +143,7 @@ def extract_raw_strings(data: bytes) -> Set[str]:
     return strings
 
 
-def analyze_strings(pe: pefile.PE) -> Dict[str, Any]:
+def analyze_strings(pe: pefile.PE) -> StringsResult:
     """
     Trích xuất chuỗi từ toàn bộ file PE nhị phân và phân loại các IoCs
     (Indicators of Compromise) bằng Regex.
@@ -150,25 +152,9 @@ def analyze_strings(pe: pefile.PE) -> Dict[str, Any]:
         pe (pefile.PE): Đối tượng file PE đã được nạp bằng thư viện pefile.
 
     Returns:
-        Dict[str, Any]: Dictionary chứa tổng số chuỗi, các IoCs phân loại, và trạng thái.
+        StringsResult: Đối tượng chứa tổng số chuỗi, các IoCs phân loại, và trạng thái.
     """
-    result: Dict[str, Any] = {
-        "status": "success",
-        "error_message": None,
-        "total_strings_count": 0,
-        "whitelisted_count": 0,
-        "iocs": {
-            "ipv4": [],
-            "ipv6": [],
-            "mac_address": [],
-            "urls": [],
-            "domains": [],
-            "emails": [],
-            "bitcoin": [],
-            "registry": [],
-            "commands": [],
-        }
-    }
+    result = StringsResult()
 
     try:
         # Đọc toàn bộ mảng byte thô của file PE (bao gồm cả Overlay)
@@ -176,7 +162,7 @@ def analyze_strings(pe: pefile.PE) -> Dict[str, Any]:
 
         # Trích xuất chuỗi thô
         all_strings: Set[str] = extract_raw_strings(raw_data)
-        result["total_strings_count"] = len(all_strings)
+        result.total_strings_count = len(all_strings)
 
         # Dùng set tạm để loại trùng lặp cho từng danh mục IoC
         ioc_sets: Dict[str, Set[str]] = {
@@ -218,17 +204,26 @@ def analyze_strings(pe: pefile.PE) -> Dict[str, Any]:
                 except Exception:
                     continue
 
-        result["whitelisted_count"] = whitelisted_count
+        result.whitelisted_count = whitelisted_count
 
-        # Chuyển set sang list cho output JSON
-        for category in ioc_sets:
-            result["iocs"][category] = sorted(ioc_sets[category])
+        # Chuyển set sang list và tạo IoCs object
+        result.iocs = IoCs(
+            ipv4=sorted(ioc_sets["ipv4"]),
+            ipv6=sorted(ioc_sets["ipv6"]),
+            mac_address=sorted(ioc_sets["mac_address"]),
+            urls=sorted(ioc_sets["urls"]),
+            domains=sorted(ioc_sets["domains"]),
+            emails=sorted(ioc_sets["emails"]),
+            bitcoin=sorted(ioc_sets["bitcoin"]),
+            registry=sorted(ioc_sets["registry"]),
+            commands=sorted(ioc_sets["commands"]),
+        )
 
     except pefile.PEFormatError as e:
-        result["status"] = "error"
-        result["error_message"] = f"Lỗi định dạng PE khi trích xuất chuỗi: {str(e)}"
+        result.status = "error"
+        result.error_message = f"Lỗi định dạng PE khi trích xuất chuỗi: {str(e)}"
     except Exception as e:
-        result["status"] = "error"
-        result["error_message"] = f"Lỗi không xác định khi trích xuất chuỗi: {str(e)}"
+        result.status = "error"
+        result.error_message = f"Lỗi không xác định khi trích xuất chuỗi: {str(e)}"
 
     return result

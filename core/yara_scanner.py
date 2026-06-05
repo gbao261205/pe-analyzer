@@ -1,6 +1,8 @@
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Optional
+
+from core.models import YaraResult
 
 try:
     import yara
@@ -8,9 +10,8 @@ try:
 except ImportError:
     YARA_AVAILABLE = False
 
-# Cấu hình logging để tránh in ra màn hình làm vỡ giao diện
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from utils.logger import get_app_logger
+logger = get_app_logger()
 
 def compile_yara_rules() -> Optional["yara.Rules"]:
     """
@@ -51,7 +52,7 @@ def compile_yara_rules() -> Optional["yara.Rules"]:
         logger.error(f"YARA Compile Error: {e}")
         return None
 
-def scan_with_yara(file_path: str, compiled_rules: Optional["yara.Rules"]) -> Dict[str, Any]:
+def scan_with_yara(file_path: str, compiled_rules: Optional["yara.Rules"]) -> YaraResult:
     """
     Quét file bằng engine YARA dựa trên các tập luật tự định nghĩa.
     
@@ -60,22 +61,18 @@ def scan_with_yara(file_path: str, compiled_rules: Optional["yara.Rules"]) -> Di
         compiled_rules (Optional["yara.Rules"]): Đối tượng luật YARA đã được biên dịch.
         
     Returns:
-        Dict[str, Any]: Kết quả quét YARA.
+        YaraResult: Kết quả quét YARA.
     """
-    result = {
-        "status": "success",
-        "error_message": None,
-        "yara_matches": []
-    }
+    result = YaraResult()
     
     if not YARA_AVAILABLE:
-        result["status"] = "error"
-        result["error_message"] = "Thư viện yara-python chưa được cài đặt."
+        result.status = "error"
+        result.error_message = "Thư viện yara-python chưa được cài đặt."
         return result
         
     if compiled_rules is None:
-        result["status"] = "no_rules"
-        result["error_message"] = "Không tìm thấy file luật YARA (.yar) hoặc lỗi biên dịch."
+        result.status = "no_rules"
+        result.error_message = "Không tìm thấy file luật YARA (.yar) hoặc lỗi biên dịch."
         return result
 
     try:
@@ -83,10 +80,11 @@ def scan_with_yara(file_path: str, compiled_rules: Optional["yara.Rules"]) -> Di
         
         # Chỉ lấy tên các rule (rule name) match
         match_names = [match.rule for match in matches]
-        result["yara_matches"] = match_names
+        result.yara_matches = match_names
         
     except Exception as e:
-        result["status"] = "error"
-        result["error_message"] = f"Lỗi trong quá trình quét YARA: {str(e)}"
+        logger.error(f"Lỗi quét YARA trên file {file_path}: {e}", exc_info=True)
+        result.status = "error"
+        result.error_message = f"Lỗi trong quá trình quét YARA: {str(e)}"
         
     return result

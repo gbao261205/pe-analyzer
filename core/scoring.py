@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Any, List
+from typing import List
 
 from core.constants import (
     DEFAULT_ENTROPY_THRESHOLD,
@@ -20,6 +20,15 @@ from core.constants import (
     PENALTY_COMMAND_IOC,
     PENALTY_REGISTRY_IOC
 )
+from core.models import (
+    SectionsResult,
+    SectionInfo,
+    ImportsExportsResult,
+    StringsResult,
+    YaraResult,
+    SignatureResult,
+    ScoringResult,
+)
 
 # --- Phân loại trọng số YARA theo từ khóa trong tên rule ---
 _YARA_CRYPTO_KEYWORDS = re.compile(
@@ -36,39 +45,39 @@ _YARA_MALWARE_KEYWORDS = re.compile(
 )
 
 
-def calculate_risk_score(section_data: Dict[str, Any], import_data: Dict[str, Any], strings_data: Dict[str, Any], yara_data: Dict[str, Any] = None, signature_data: Dict[str, Any] = None) -> Dict[str, Any]:
+def calculate_risk_score(section_data: SectionsResult, import_data: ImportsExportsResult, strings_data: StringsResult, yara_data: YaraResult = None, signature_data: SignatureResult = None) -> ScoringResult:
     """
     Tính toán điểm rủi ro (Risk Score) từ 0-100 dựa trên kết quả phân tích từ các module.
     Có nhận thức ngữ cảnh (Context-Aware): Tự động giảm điểm cho file .NET hợp pháp
     và phân loại trọng số YARA theo mức độ nguy hiểm của rule.
     
     Args:
-        section_data (Dict[str, Any]): Dữ liệu sections.
-        import_data (Dict[str, Any]): Dữ liệu imports/exports.
-        strings_data (Dict[str, Any]): Dữ liệu strings/iocs.
-        yara_data (Dict[str, Any], optional): Dữ liệu quét YARA.
-        signature_data (Dict[str, Any], optional): Dữ liệu chữ ký số.
+        section_data (SectionsResult): Dữ liệu sections.
+        import_data (ImportsExportsResult): Dữ liệu imports/exports.
+        strings_data (StringsResult): Dữ liệu strings/iocs.
+        yara_data (YaraResult, optional): Dữ liệu quét YARA.
+        signature_data (SignatureResult, optional): Dữ liệu chữ ký số.
         
     Returns:
-        Dict[str, Any]: Điểm số, Xếp loại rủi ro, và danh sách các lý do cộng điểm.
+        ScoringResult: Điểm số, Xếp loại rủi ro, và danh sách các lý do cộng điểm.
     """
     score = 0
     reasons: List[str] = []
 
     # Nhận diện file .NET
-    is_dot_net = import_data.get("is_dot_net", False)
+    is_dot_net = import_data.is_dot_net
 
     # --- 1. Đánh giá Sections ---
-    sections = section_data.get("sections", [])
+    sections = section_data.sections
 
-    has_rwx = any(sec.get("is_rwx", False) for sec in sections)
+    has_rwx = any(sec.is_rwx for sec in sections)
     if has_rwx:
         score += PENALTY_RWX_SECTION
         reasons.append("Phát hiện phân vùng có quyền RWX (Read/Write/Execute)")
 
     for sec in sections:
-        entropy = sec.get("entropy", 0)
-        sec_name = sec.get("name", "").strip().lower()
+        entropy = sec.entropy
+        sec_name = sec.name.strip().lower()
 
         if entropy > DEFAULT_ENTROPY_THRESHOLD:
             # File .NET: Bỏ qua entropy cao của section .rsrc (chứa tài nguyên IL)
@@ -84,7 +93,7 @@ def calculate_risk_score(section_data: Dict[str, Any], import_data: Dict[str, An
                 break  # Chỉ cộng 1 lần cho toàn bộ sections
 
     # --- 2. Đánh giá Imports ---
-    suspicious_apis = import_data.get("suspicious_imports", [])
+    suspicious_apis = import_data.suspicious_imports
     api_count = len(suspicious_apis)
     if api_count > 0:
         added_score = min(api_count * PENALTY_SUSPICIOUS_API_MULTIPLIER, PENALTY_SUSPICIOUS_API_MAX)
@@ -92,22 +101,22 @@ def calculate_risk_score(section_data: Dict[str, Any], import_data: Dict[str, An
         reasons.append(f"Tìm thấy {api_count} API khả nghi")
 
     # --- 3. Đánh giá Strings & IoCs ---
-    iocs = strings_data.get("iocs", {})
-    if iocs.get("ipv4") or iocs.get("ipv6") or iocs.get("domains") or iocs.get("urls"):
+    iocs = strings_data.iocs
+    if iocs.ipv4 or iocs.ipv6 or iocs.domains or iocs.urls:
         score += PENALTY_NETWORK_IOC
         reasons.append("Chứa dấu hiệu kết nối mạng (IP, Domains, URLs)")
         
-    if iocs.get("commands"):
+    if iocs.commands:
         score += PENALTY_COMMAND_IOC
         reasons.append("Phát hiện chuỗi lệnh thực thi hệ thống đáng ngờ (Commands)")
         
-    if iocs.get("registry"):
+    if iocs.registry:
         score += PENALTY_REGISTRY_IOC
         reasons.append("Truy xuất hoặc chỉnh sửa Registry keys")
 
     # --- 4. Đánh giá YARA (Phân loại trọng số theo tên rule) ---
     if yara_data:
-        yara_matches = yara_data.get("yara_matches", [])
+        yara_matches = yara_data.yara_matches
         for match_name in yara_matches:
             if _YARA_MALWARE_KEYWORDS.search(match_name):
                 score += WEIGHT_YARA_MALICIOUS
@@ -125,7 +134,7 @@ def calculate_risk_score(section_data: Dict[str, Any], import_data: Dict[str, An
     # --- 5. Đánh giá Chữ ký số (Authenticode) ---
     is_signed = False
     if signature_data:
-        is_signed = signature_data.get("is_signed", False)
+        is_signed = signature_data.is_signed
     if is_signed:
         score = max(0, score - BONUS_AUTHENTICODE_SIGNED)
         reasons.append(f"File có đính kèm Chữ ký số Authenticode (Giảm rủi ro -{BONUS_AUTHENTICODE_SIGNED})")
@@ -145,10 +154,10 @@ def calculate_risk_score(section_data: Dict[str, Any], import_data: Dict[str, An
     else:
         risk_level = "SAFE"
 
-    return {
-        "risk_score": score,
-        "risk_level": risk_level,
-        "is_dot_net": is_dot_net,
-        "is_signed": is_signed,
-        "reasons": reasons
-    }
+    return ScoringResult(
+        risk_score=score,
+        risk_level=risk_level,
+        is_dot_net=is_dot_net,
+        is_signed=is_signed,
+        reasons=reasons
+    )

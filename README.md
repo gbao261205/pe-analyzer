@@ -14,10 +14,11 @@
 * **Phân tích Imports / Exports**: Quét Bảng Import (IAT) để tìm kiếm các Windows API nguy hiểm (Process Injection, Keylogging, Network communication...).
 * **Trích xuất IoCs & Smart Whitelist**: Sử dụng Biểu thức chính quy (Regex) tối ưu để trích xuất IPv4, IPv6, URL, Domain, Email Ransomware, Wallet, Registry. Đặc biệt trang bị **Whitelist Filter** để loại bỏ 100% cảnh báo giả từ Local IPs, Microsoft Domains, hãng chứng chỉ và Namespace .NET.
 * **Threat Risk Assessment (Chấm điểm rủi ro)**: Đánh giá file theo thang điểm từ `0` đến `100` với 5 mức độ (SAFE, LOW, MEDIUM, HIGH, CRITICAL). Trả về danh sách chi tiết nguyên nhân (Reasons) của điểm số. Tích hợp **Configuration Management** giúp dễ dàng tinh chỉnh các ngưỡng điểm, trọng số YARA và Entropy tại file `core/constants.py` duy nhất.
-* **Batch Scan An Toàn (Safe Execution)**: Hỗ trợ quét hàng loạt tệp với thanh tiến trình. Xử lý ngoại lệ với cơ chế **Queue-based System Error Logging** nhằm đảm bảo độ ổn định khi quét số lượng lớn, tránh crash hệ thống và lưu vết đầy đủ traceback vào `reports/error.log`.
-* **Giao diện Terminal siêu trực quan**: Giao diện thiết kế theo chuẩn công cụ SOC chuyên nghiệp sử dụng thư viện `rich` với các bảng màu trực quan: Đỏ (Nguy hiểm), Vàng (Cảnh báo), Xanh (An toàn).
+* **Kiến trúc hướng Dữ liệu (Dataclass-driven)**: Chuyển đổi toàn bộ luồng truyền tải dữ liệu giữa các module từ dạng Dictionary lỏng lẻo sang các kiểu dữ liệu có cấu trúc (`dataclasses` trong `core/models.py`), mang lại sự minh bạch và tránh triệt để các lỗi truy xuất động (KeyError).
+* **Batch Scan An Toàn (Safe Execution)**: Hỗ trợ quét hàng loạt tệp với thanh tiến trình. Xử lý ngoại lệ an toàn ở từng file riêng lẻ.
+* **Hệ thống Logging Tập trung & Đa tiến trình**: Quản lý song song giao diện `rich` và log hệ thống ẩn. Toàn bộ nhật ký vòng đời (quét đơn, quét đa tiến trình, lỗi crash) được thu thập an toàn bằng `QueueListener` và lưu xoay vòng bằng `RotatingFileHandler` vào tệp `reports/app.log`, tuyệt đối không làm vỡ giao diện đồ họa CLI.
+* **Giao diện Terminal chuyên nghiệp**: Giao diện thiết kế theo chuẩn công cụ SOC (Vuông vắn, chống xê lệch ở mọi độ phân giải Terminal) sử dụng thư viện `rich` với các khối màu trực quan.
 * **Tối ưu Hóa Hiệu Suất YARA**: Cơ chế **Pre-compile YARA Rules** tại Application Startup (Khởi động ứng dụng), giúp tăng vọt hiệu suất khi quét hàng loạt file.
-
 ## ⚙️ Cài đặt
 
 1. Đảm bảo bạn đã cài đặt Python 3.8+ trên hệ thống.
@@ -34,7 +35,11 @@
    pip install -r requirements.txt
    ```
 
-*Lưu ý:* Nếu bạn không thể cài đặt `tlsh` hoặc `yara-python` trên môi trường của mình (ví dụ thiếu trình biên dịch C++), công cụ vẫn sẽ tự động vô hiệu hóa tính năng đó và hoạt động bình thường trên các module còn lại.
+> [!WARNING]
+> **CẢNH BÁO QUAN TRỌNG VỀ YARA:** Bạn bắt buộc phải cài đặt thư viện bằng file `requirements.txt` (sử dụng thư viện `yara-python`). TUYỆT ĐỐI KHÔNG gõ lệnh `pip install yara`. Thư viện có tên `yara` trên PyPI là một bản cũ/lỗi, sẽ gây ra xung đột nghiêm trọng (`FileNotFoundError: Could not find module libyara.dll`) và làm sập toàn bộ tính năng phân tích của công cụ!
+
+> [!NOTE]
+> *Lưu ý:* Nếu bạn không thể cài đặt `tlsh` hoặc `yara-python` trên môi trường của mình (ví dụ thiếu trình biên dịch C++), công cụ vẫn sẽ tự động vô hiệu hóa tính năng đó và hoạt động bình thường trên các module còn lại.
 
 ## 🚀 Hướng dẫn sử dụng
 
@@ -52,14 +57,14 @@ python main.py
 Trong chế độ Single Scan, chọn tùy chọn `[4]` để lưu trữ toàn bộ dữ liệu phân tích ra thư mục `reports/` ở dạng file JSON với timestamp (Ví dụ: `malware_exe_report_20260524_190000.json`).
 
 ## 📁 Cấu trúc dự án
-```
 pe_analyzer/
 ├── main.py                  # Entry Point chạy CLI Menu. Điều phối luồng và Error Logging.
 ├── requirements.txt         # File cố định phiên bản các thư viện môi trường (Pinned versions).
 ├── rules/                   # Thư mục thả các file luật YARA (.yar, .yara).
-├── reports/                 # Nơi lưu trữ file JSON báo cáo và error.log.
+├── reports/                 # Nơi lưu trữ file JSON báo cáo và hệ thống app.log.
 ├── core/                    # Mã nguồn các module phân tích:
 │   ├── constants.py         # Quản lý cấu hình tập trung (Ngưỡng điểm, Entropy, Extensions).
+│   ├── models.py            # Khai báo cấu trúc dữ liệu Dataclasses chuẩn hóa.
 │   ├── hashes.py            # Xử lý MD5, SHA-256, Imphash, TLSH.
 │   ├── imports_exports.py   # Quét bảng IAT, EAT, phát hiện API độc hại.
 │   ├── scoring.py           # Thuật toán chấm điểm rủi ro Context-aware 0-100.
@@ -70,7 +75,8 @@ pe_analyzer/
 ├── ui/                      # Giao diện
 │   └── renderer.py          # Render giao diện bằng thư viện `rich`.
 └── utils/
-    └── exporter.py          # Đóng gói và ghi Master Report JSON.
+    ├── exporter.py          # Đóng gói và ghi Master Report JSON.
+    └── logger.py            # Khởi tạo hệ thống RotatingFileHandler Logging tập trung.
 ```
 
 ## 🛡️ Tuyên bố miễn trừ trách nhiệm (Disclaimer)

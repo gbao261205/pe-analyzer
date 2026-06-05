@@ -1,10 +1,25 @@
 from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
+from rich.table import Table as _Table
+from rich.panel import Panel as _Panel
+from rich import box
+
+def Table(*args, **kwargs):
+    kwargs.setdefault('box', box.SQUARE)
+    return _Table(*args, **kwargs)
+
+def Panel(*args, **kwargs):
+    kwargs.setdefault('box', box.SQUARE)
+    return _Panel(*args, **kwargs)
 from rich.text import Text
+from rich.rule import Rule
 from rich.align import Align
 from typing import Dict, Any, List
 from core.constants import MAX_BATCH_SUMMARY_DISPLAY
+from core.models import (
+    HashResult, SignatureResult, YaraResult,
+    SectionInfo, SectionsResult, ImportsExportsResult,
+    IoCs, StringsResult, ScoringResult,
+)
 
 # Đối tượng Console toàn cục cho module UI
 console = Console()
@@ -17,21 +32,19 @@ _CLR_INFO = "bold cyan"
 _CLR_DIM = "dim"
 
 
-def render_hashes(hash_data: Dict[str, Any]) -> None:
+def render_hashes(hash_data: HashResult) -> None:
     """
     Hiển thị thông tin mã băm (Hashes) ra terminal.
     
     Args:
-        hash_data (Dict[str, Any]): Dictionary trả về từ core/hashes.py.
+        hash_data (HashResult): Dataclass trả về từ core/hashes.py.
     """
     console.print()
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
-    console.print(f"[{_CLR_INFO}]  #  FILE IDENTIFICATION (HASHES)[/]")
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
+    console.print(Rule(f"[{_CLR_INFO}]#  FILE IDENTIFICATION (HASHES)[/]", style=_CLR_INFO, characters="═"))
 
-    status = hash_data.get("status", "error")
+    status = hash_data.status
     if status == "error":
-        error_msg = hash_data.get("error_message", "Lỗi không xác định.")
+        error_msg = hash_data.error_message
         console.print(Panel(
             f"[{_CLR_DANGER}]✘ {error_msg}[/]",
             title="[bold]Hash Analysis Error[/]",
@@ -39,10 +52,10 @@ def render_hashes(hash_data: Dict[str, Any]) -> None:
         ))
         return
 
-    md5 = hash_data.get("md5", "N/A")
-    sha256 = hash_data.get("sha256", "N/A")
-    imphash = hash_data.get("imphash", "N/A")
-    tlsh_hash = hash_data.get("tlsh", "N/A")
+    md5 = hash_data.md5
+    sha256 = hash_data.sha256
+    imphash = hash_data.imphash
+    tlsh_hash = hash_data.tlsh
 
     hash_text = Text()
     hash_text.append("MD5:     ", style="bold white")
@@ -65,18 +78,18 @@ def render_hashes(hash_data: Dict[str, Any]) -> None:
     ))
 
 
-def render_signature(signature_data: Dict[str, Any]) -> None:
+def render_signature(signature_data: SignatureResult) -> None:
     """
     Hiển thị trạng thái Chữ ký số Authenticode ra terminal.
 
     Args:
-        signature_data (Dict[str, Any]): Dictionary trả về từ core/signature.py.
+        signature_data (SignatureResult): Dataclass trả về từ core/signature.py.
     """
-    is_signed = signature_data.get("is_signed", False)
-    status = signature_data.get("status", "error")
+    is_signed = signature_data.is_signed
+    status = signature_data.status
 
     if status == "error":
-        error_msg = signature_data.get("error_message", "Lỗi không xác định.")
+        error_msg = signature_data.error_message
         console.print(f"  [{_CLR_WARN}]⚠ Authenticode: {error_msg}[/]")
     elif is_signed:
         console.print(f"  [{_CLR_SAFE}]✔ Authenticode: Signed (Presence Only - Validity Unverified)[/]")
@@ -85,20 +98,18 @@ def render_signature(signature_data: Dict[str, Any]) -> None:
 
     console.print()
 
-def render_yara(yara_data: Dict[str, Any]) -> None:
+def render_yara(yara_data: YaraResult) -> None:
     """
     Hiển thị kết quả quét YARA ra terminal.
     
     Args:
-        yara_data (Dict[str, Any]): Dictionary trả về từ core/yara_scanner.py.
+        yara_data (YaraResult): Dataclass trả về từ core/yara_scanner.py.
     """
     console.print()
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
-    console.print(f"[{_CLR_INFO}]  ☢  YARA SCAN RESULTS[/]")
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
+    console.print(Rule(f"[{_CLR_INFO}]☢  YARA SCAN RESULTS[/]", style=_CLR_INFO, characters="═"))
 
-    status = yara_data.get("status", "error")
-    error_msg = yara_data.get("error_message", "")
+    status = yara_data.status
+    error_msg = yara_data.error_message
     
     if status == "error":
         console.print(Panel(
@@ -114,7 +125,7 @@ def render_yara(yara_data: Dict[str, Any]) -> None:
         ))
         return
 
-    matches = yara_data.get("yara_matches", [])
+    matches = yara_data.yara_matches
     
     if not matches:
         console.print(Panel(
@@ -141,18 +152,18 @@ def render_yara(yara_data: Dict[str, Any]) -> None:
 
 
 
-def render_risk_score(scoring_data: Dict[str, Any]) -> None:
+def render_risk_score(scoring_data: ScoringResult) -> None:
     """
     Hiển thị thông tin tổng hợp điểm rủi ro và các lý do.
     
     Args:
-        scoring_data (Dict[str, Any]): Dữ liệu điểm rủi ro trả về từ module scoring.
+        scoring_data (ScoringResult): Dữ liệu điểm rủi ro trả về từ module scoring.
     """
     console.print()
     
-    score = scoring_data.get("risk_score", 0)
-    level = scoring_data.get("risk_level", "SAFE")
-    reasons = scoring_data.get("reasons", [])
+    score = scoring_data.risk_score
+    level = scoring_data.risk_level
+    reasons = scoring_data.reasons
 
     if level == "CRITICAL":
         color = "red"
@@ -196,22 +207,20 @@ def render_risk_score(scoring_data: Dict[str, Any]) -> None:
     ))
 
 
-def render_sections(section_data: Dict[str, Any]) -> None:
+def render_sections(section_data: SectionsResult) -> None:
     """
     Hiển thị bảng phân tích Sections (Entropy, Permissions, Size Anomaly) ra terminal.
 
     Args:
-        section_data (Dict[str, Any]): Dictionary trả về từ core/sections.py.
+        section_data (SectionsResult): Dataclass trả về từ core/sections.py.
     """
     console.print()
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
-    console.print(f"[{_CLR_INFO}]  ⚙  SECTION ANALYSIS[/]")
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
+    console.print(Rule(f"[{_CLR_INFO}]⚙  SECTION ANALYSIS[/]", style=_CLR_INFO, characters="═"))
 
     # Kiểm tra lỗi
-    status = section_data.get("status", "error")
+    status = section_data.status
     if status == "error":
-        error_msg = section_data.get("error_message", "Lỗi không xác định.")
+        error_msg = section_data.error_message
         console.print(Panel(
             f"[{_CLR_DANGER}]✘ {error_msg}[/]",
             title="[bold]Section Analysis Error[/]",
@@ -219,8 +228,8 @@ def render_sections(section_data: Dict[str, Any]) -> None:
         ))
         return
 
-    total = section_data.get("total_sections", 0)
-    sections = section_data.get("sections", [])
+    total = section_data.total_sections
+    sections = section_data.sections
 
     if total == 0:
         console.print(f"  [{_CLR_DIM}]Không tìm thấy section nào.[/]")
@@ -249,15 +258,15 @@ def render_sections(section_data: Dict[str, Any]) -> None:
     table.add_column("Status", min_width=10, justify="center")
 
     for idx, sec in enumerate(sections, start=1):
-        name = sec.get("name", "N/A")
-        vaddr = sec.get("virtual_address", "N/A")
-        vsize = sec.get("virtual_size", 0)
-        rsize = sec.get("raw_size", 0)
-        entropy = sec.get("entropy", 0.0)
-        perms = sec.get("perms", {})
-        is_rwx = sec.get("is_rwx", False)
-        has_size_anomaly = sec.get("has_size_anomaly", False)
-        is_suspicious = sec.get("is_suspicious", False)
+        name = sec.name
+        vaddr = sec.virtual_address
+        vsize = sec.virtual_size
+        rsize = sec.raw_size
+        entropy = sec.entropy
+        perms = sec.perms
+        is_rwx = sec.is_rwx
+        has_size_anomaly = sec.has_size_anomaly
+        is_suspicious = sec.is_suspicious
 
         # Chuỗi quyền rút gọn: R/W/X
         perm_str = ""
@@ -299,20 +308,18 @@ def render_sections(section_data: Dict[str, Any]) -> None:
     console.print(table)
 
 
-def render_imports(import_data: Dict[str, Any]) -> None:
+def render_imports(import_data: ImportsExportsResult) -> None:
     """
     Hiển thị bảng Imports/Exports và danh sách Suspicious APIs ra terminal.
 
     Args:
-        import_data (Dict[str, Any]): Dictionary trả về từ core/imports_exports.py.
+        import_data (ImportsExportsResult): Dataclass trả về từ core/imports_exports.py.
     """
     console.print()
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
-    console.print(f"[{_CLR_INFO}]  📦  IMPORTS / EXPORTS ANALYSIS[/]")
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
+    console.print(Rule(f"[{_CLR_INFO}]📦  IMPORTS / EXPORTS ANALYSIS[/]", style=_CLR_INFO, characters="═"))
 
     # Nhận diện .NET Framework
-    is_dot_net = import_data.get("is_dot_net", False)
+    is_dot_net = import_data.is_dot_net
     if is_dot_net:
         console.print(Panel(
             "[bold cyan]🔷 Architecture: C# .NET Framework[/]\n"
@@ -323,8 +330,8 @@ def render_imports(import_data: Dict[str, Any]) -> None:
         ))
 
     # Kiểm tra lỗi
-    status = import_data.get("status", "error")
-    error_msg = import_data.get("error_message")
+    status = import_data.status
+    error_msg = import_data.error_message
     if status == "error":
         console.print(Panel(
             f"[{_CLR_DANGER}]✘ {error_msg or 'Lỗi không xác định.'}[/]",
@@ -340,9 +347,9 @@ def render_imports(import_data: Dict[str, Any]) -> None:
             border_style="yellow"
         ))
 
-    imports = import_data.get("imports", {})
-    exports = import_data.get("exports", [])
-    suspicious = import_data.get("suspicious_imports", [])
+    imports = import_data.imports
+    exports = import_data.exports
+    suspicious = import_data.suspicious_imports
 
     # --- Panel cảnh báo Suspicious APIs ---
     if suspicious:
@@ -414,22 +421,20 @@ def render_imports(import_data: Dict[str, Any]) -> None:
         console.print(f"  [{_CLR_DIM}]Không có hàm Export.[/]")
 
 
-def render_strings_iocs(strings_data: Dict[str, Any]) -> None:
+def render_strings_iocs(strings_data: StringsResult) -> None:
     """
     Hiển thị kết quả trích xuất chuỗi và phân loại IoCs ra terminal.
 
     Args:
-        strings_data (Dict[str, Any]): Dictionary trả về từ core/strings_analyzer.py.
+        strings_data (StringsResult): Dataclass trả về từ core/strings_analyzer.py.
     """
     console.print()
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
-    console.print(f"[{_CLR_INFO}]  🔍  SMART STRINGS & IoCs ANALYSIS[/]")
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
+    console.print(Rule(f"[{_CLR_INFO}]🔍  SMART STRINGS & IoCs ANALYSIS[/]", style=_CLR_INFO, characters="═"))
 
     # Kiểm tra lỗi
-    status = strings_data.get("status", "error")
+    status = strings_data.status
     if status == "error":
-        error_msg = strings_data.get("error_message", "Lỗi không xác định.")
+        error_msg = strings_data.error_message
         console.print(Panel(
             f"[{_CLR_DANGER}]✘ {error_msg}[/]",
             title="[bold]Strings Analysis Error[/]",
@@ -437,9 +442,9 @@ def render_strings_iocs(strings_data: Dict[str, Any]) -> None:
         ))
         return
 
-    total_strings = strings_data.get("total_strings_count", 0)
-    whitelisted_count = strings_data.get("whitelisted_count", 0)
-    iocs = strings_data.get("iocs", {})
+    total_strings = strings_data.total_strings_count
+    whitelisted_count = strings_data.whitelisted_count
+    iocs = strings_data.iocs
 
     console.print(f"  Tổng số chuỗi trích xuất: [{_CLR_INFO}]{total_strings}[/]")
     if whitelisted_count > 0:
@@ -464,7 +469,7 @@ def render_strings_iocs(strings_data: Dict[str, Any]) -> None:
     has_any_ioc = False
 
     for key, icon, label, color in ioc_display_config:
-        items = iocs.get(key, [])
+        items = getattr(iocs, key, [])
         if not items:
             continue
 
@@ -503,9 +508,7 @@ def render_batch_summary(results: List[Dict[str, Any]]) -> None:
         results (List[Dict[str, Any]]): Danh sách kết quả phân tích từ run_batch_scan().
     """
     console.print()
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
-    console.print(f"[{_CLR_INFO}]  📊  BATCH SCAN SUMMARY[/]")
-    console.print(f"[{_CLR_INFO}]{'═' * 60}[/]")
+    console.print(Rule(f"[{_CLR_INFO}]📊  BATCH SCAN SUMMARY[/]", style=_CLR_INFO, characters="═"))
 
     total_scanned = len(results)
     suspicious_results = [r for r in results if r.get("is_suspicious", False)]

@@ -51,7 +51,7 @@ from core.scoring import calculate_risk_score
 from core.constants import PE_EXTENSIONS, DEFAULT_ENTROPY_THRESHOLD, SCORE_LIMIT_SAFE
 from utils.exporter import export_to_json
 from utils.logger import setup_global_logging, get_app_logger, get_log_file_path, get_standard_formatter
-from rich.panel import Panel
+
 
 # ═══════════════════════════════════════════════════════════
 #  PE STATIC FEATURE EXTRACTOR — Entry Point

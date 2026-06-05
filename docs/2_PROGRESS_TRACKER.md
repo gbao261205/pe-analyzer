@@ -4,15 +4,13 @@
 Hoàn thiện Batch Scan và xuất báo cáo JSON/CSV. Hệ thống đã chạy end-to-end với `main.py`.
 
 ## 📋 To-Do (Backlog)
-- *(Không có task nào trong backlog)*
-
-## ⏳ In Progress
-
-
 - [ ] Xây dựng khung kiểm thử (Testing Framework): Cài đặt pytest và viết các bài unit test đầu tiên cho cấu phần chấm điểm rủi ro (core/scoring.py) bằng cách sử dụng kỹ thuật mock dữ liệu đầu vào.
 - [ ] Áp dụng Multiprocessing: Cải tiến tính năng Batch Scan bằng cách tích hợp concurrent.futures.ProcessPoolExecutor để tận dụng tối đa sức mạnh đa nhân của CPU khi xử lý hàng loạt file nặng.  
 - [ ] Phân rã God Script (main.py): Tách cấu trúc tuần tự của main.py thành các lớp đối tượng có trách nhiệm rõ ràng như CLIApp (điều phối menu), ScannerEngine (quét luồng đơn) và BatchProcessor (quét luồng song song).  
 - [ ] Chuyển đổi sang src/ Layout: Tái cấu trúc thư mục dự án theo chuẩn phân phối mã nguồn Python hiện đại, đưa toàn bộ mã nguồn ứng dụng vào bên trong thư mục src/.
+
+## ⏳ In Progress
+- *(Không có task nào trong backlog)*
 
 ## ✅ Done
 - [x] Tích hợp Python Logging: Xây dựng hệ thống log chuẩn sử dụng RotatingFileHandler, hợp nhất log của Single Scan và Batch Scan về `reports/app.log` an toàn, không làm hỏng CLI `rich`.

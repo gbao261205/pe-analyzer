@@ -461,9 +461,14 @@ def render_strings_iocs(strings_data: StringsResult) -> None:
         ("urls", "🔗", "URLs", _CLR_DANGER),
         ("domains", "🌍", "Standalone Domains", _CLR_DANGER),
         ("emails", "📧", "Email Addresses (Ransomware IoC)", _CLR_DANGER),
-        ("bitcoin", "₿", "Bitcoin Wallets (Ransomware IoC)", _CLR_DANGER),
+        ("bitcoin", "₿", "Crypto Wallets (Ransomware IoC)", _CLR_DANGER),
         ("registry", "🗝", "Registry Keys", _CLR_WARN),
         ("commands", "💻", "Suspicious Commands", _CLR_DANGER),
+        ("suspicious_paths", "📂", "Suspicious File Paths", _CLR_WARN),
+        ("user_agents", "🕵", "Embedded User-Agents", _CLR_WARN),
+        ("mutexes", "🔒", "Mutex Names (Infection Markers)", _CLR_DANGER),
+        ("suspicious_keywords", "⚠", "Suspicious Keywords (Heuristic)", _CLR_DANGER),
+        ("encoded_strings", "🔓", "Decoded Base64 Strings", _CLR_DANGER),
     ]
 
     has_any_ioc = False

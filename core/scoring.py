@@ -114,6 +114,25 @@ def calculate_risk_score(section_data: SectionsResult, import_data: ImportsExpor
         score += PENALTY_REGISTRY_IOC
         reasons.append("Truy xuất hoặc chỉnh sửa Registry keys")
 
+    # --- 3b. Đánh giá Heuristic IoCs (v2) ---
+    if iocs.suspicious_keywords:
+        kw_score = min(len(iocs.suspicious_keywords) * 3, 15)
+        score += kw_score
+        reasons.append(f"Phát hiện {len(iocs.suspicious_keywords)} từ khóa hành vi đáng ngờ (Heuristic) (+{kw_score})")
+
+    if iocs.user_agents:
+        score += 5
+        reasons.append("Phát hiện chuỗi User-Agent nhúng trong binary (+5)")
+
+    if iocs.mutexes:
+        score += 10
+        reasons.append(f"Phát hiện {len(iocs.mutexes)} tên Mutex (Infection Marker) (+10)")
+
+    if iocs.encoded_strings:
+        enc_score = min(len(iocs.encoded_strings) * 5, 15)
+        score += enc_score
+        reasons.append(f"Phát hiện {len(iocs.encoded_strings)} chuỗi mã hóa Base64 chứa nội dung khả nghi (+{enc_score})")
+
     # --- 4. Đánh giá YARA (Phân loại trọng số theo tên rule) ---
     if yara_data:
         yara_matches = yara_data.yara_matches

@@ -98,6 +98,7 @@ class ImportsExportsResult:
 @dataclass
 class IoCs:
     """Tập hợp các chỉ báo xâm nhập (Indicators of Compromise)."""
+    # === Network IoCs ===
     ipv4: List[str] = field(default_factory=list)
     ipv6: List[str] = field(default_factory=list)
     mac_address: List[str] = field(default_factory=list)
@@ -107,6 +108,12 @@ class IoCs:
     bitcoin: List[str] = field(default_factory=list)
     registry: List[str] = field(default_factory=list)
     commands: List[str] = field(default_factory=list)
+    # === Heuristic / Behavioral IoCs ===
+    suspicious_paths: List[str] = field(default_factory=list)
+    user_agents: List[str] = field(default_factory=list)
+    mutexes: List[str] = field(default_factory=list)
+    suspicious_keywords: List[str] = field(default_factory=list)
+    encoded_strings: List[str] = field(default_factory=list)
 
 
 @dataclass

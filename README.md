@@ -12,7 +12,16 @@
 * **YARA Rule Engine**: Tích hợp quét YARA để đối chiếu file với các mẫu nhận diện (signatures). Phân loại trọng số thông minh theo 4 nhóm rule: Malware, Packer, Crypto, Generic.
 * **Context-Aware Entropy & Sections**: Trích xuất các phân vùng `.text`, `.data`...; phát hiện các cờ nghi vấn như RWX. Nhận diện kiến trúc phần mềm (VD: C# .NET) để bỏ qua các cảnh báo Entropy giả trên `.rsrc`.
 * **Phân tích Imports / Exports**: Quét Bảng Import (IAT) để tìm kiếm các Windows API nguy hiểm (Process Injection, Keylogging, Network communication...).
-* **Trích xuất IoCs & Smart Whitelist**: Sử dụng Biểu thức chính quy (Regex) tối ưu để trích xuất IPv4, IPv6, URL, Domain, Email Ransomware, Wallet, Registry. Đặc biệt trang bị **Whitelist Filter** để loại bỏ 100% cảnh báo giả từ Local IPs, Microsoft Domains, hãng chứng chỉ và Namespace .NET.
+* **Trích xuất IoCs Nâng cao & Heuristic Analysis (v2)**: Engine trích xuất chuỗi đa tầng phân loại **14 loại IoC** kết hợp phân tích hành vi (Behavioral Heuristic):
+
+  | Nhóm | Loại IoC | Mô tả |
+  |---|---|---|
+  | 🌐 Mạng | IPv4, IPv6, URLs, Domains, Emails, Crypto Wallets, MAC | Phát hiện kết nối C2, Ransomware |
+  | 💻 Hệ thống | Commands, Registry, Suspicious Paths | Lệnh shell, persistence, payload drop |
+  | 🕵 Hành vi | User-Agents, Mutexes, Suspicious Keywords | Giả mạo trình duyệt, infection marker, anti-debug |
+  | 🔓 Mã hóa | Decoded Base64 Strings | Tự động giải mã Base64 và quét đệ quy IoC bên trong |
+
+  Trang bị **Smart Whitelist** (~40 mẫu Regex) lọc bỏ IP nội bộ, Microsoft/Google Domains, .NET Namespace, hãng chứng chỉ số để triệt tiêu cảnh báo giả.
 * **Threat Risk Assessment (Chấm điểm rủi ro)**: Đánh giá file theo thang điểm từ `0` đến `100` với 5 mức độ (SAFE, LOW, MEDIUM, HIGH, CRITICAL). Trả về danh sách chi tiết nguyên nhân (Reasons) của điểm số. Tích hợp **Configuration Management** giúp dễ dàng tinh chỉnh các ngưỡng điểm, trọng số YARA và Entropy tại file `core/constants.py` duy nhất.
 * **Kiến trúc hướng Dữ liệu (Dataclass-driven)**: Chuyển đổi toàn bộ luồng truyền tải dữ liệu giữa các module từ dạng Dictionary lỏng lẻo sang các kiểu dữ liệu có cấu trúc (`dataclasses` trong `core/models.py`), mang lại sự minh bạch và tránh triệt để các lỗi truy xuất động (KeyError).
 * **Batch Scan An Toàn (Safe Execution)**: Hỗ trợ quét hàng loạt tệp với thanh tiến trình. Xử lý ngoại lệ an toàn ở từng file riêng lẻ.
@@ -57,7 +66,7 @@ python main.py
 Trong chế độ Single Scan, chọn tùy chọn `[4]` để lưu trữ toàn bộ dữ liệu phân tích ra thư mục `reports/` ở dạng file JSON với timestamp (Ví dụ: `malware_exe_report_20260524_190000.json`).
 
 ## 📁 Cấu trúc dự án
-pe_analyzer/
+```
 ├── main.py                  # Entry Point chạy CLI Menu. Điều phối luồng và Error Logging.
 ├── requirements.txt         # File cố định phiên bản các thư viện môi trường (Pinned versions).
 ├── rules/                   # Thư mục thả các file luật YARA (.yar, .yara).
@@ -70,7 +79,7 @@ pe_analyzer/
 │   ├── scoring.py           # Thuật toán chấm điểm rủi ro Context-aware 0-100.
 │   ├── sections.py          # Xử lý PE Sections, Entropy, Permissions.
 │   ├── signature.py         # Kiểm tra sự tồn tại của Chữ ký số Authenticode.
-│   ├── strings_analyzer.py  # Trích xuất Strings, quét IoC với Regex & Whitelist.
+│   ├── strings_analyzer.py  # Trích xuất Strings, quét 14 loại IoC bằng Regex + Heuristic + Base64 Decoder.
 │   └── yara_scanner.py      # Module quét và compile YARA.
 ├── ui/                      # Giao diện
 │   └── renderer.py          # Render giao diện bằng thư viện `rich`.

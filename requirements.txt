@@ -1,11 +1,11 @@
-# --- Giao diện & Hiển thị CLI ---
+# --- CLI UI & Display ---
 rich==15.0.0
 
-# --- Phân tích cấu trúc PE nhị phân ---
+# --- PE Static Analysis ---
 pefile==2024.8.26
 
-# --- Nhận diện mã độc bằng mẫu ký tự ---
+# --- YARA Signatures ---
 yara-python==4.5.4
 
-# --- Mã băm mờ (Fuzzy Hashing) ---
-tlsh==0.2.0
+# --- Fuzzy Hashing ---
+py-tlsh

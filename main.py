@@ -69,7 +69,6 @@ _BANNER = r"""
 [/]
 [bold white]  ──────────────────────────────────────────────────────────────────────────────────[/]
 [bold green]   ⚡ PE Static Feature Extractor — Malware Analysis CLI Tool[/]
-[dim]   Author: Nguyễn Gia Bảo  |  Type: Defensive Cybersecurity  |  Mode: Static Analysis[/]
 [bold white]  ──────────────────────────────────────────────────────────────────────────────────[/]
 """
 
